@@ -65,8 +65,11 @@ class StorageManager {
     // Call insertRecord with the updated properties
   }
 
+  /**
+   * For simplicity assume all blocks are full
+   */
   public float getDiskUtilization() {
-    return (float) (numRecords*Record.RECORD_BYTE_SIZE ) / Disk.DISK_BYTE_SIZE;
+    return (float) (occupiedBlocks * Block.BLOCK_BYTE_SIZE) / Disk.DISK_BYTE_SIZE;
   }
 
   /**
