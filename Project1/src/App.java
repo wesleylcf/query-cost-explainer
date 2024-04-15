@@ -3,7 +3,7 @@ public class App {
         // Init disk memory
         Disk disk = new Disk(Block.BLOCK_BYTE_SIZE);
         // Init storage related components
-        WriteAheadLog writeAheadLog = new WriteAheadLog(System.getProperty("user.dir") + "/wal.tsv");
+        WriteAheadLog writeAheadLog = new WriteAheadLog(System.getProperty("user.dir") + "/recovery.log");
         StorageConfiguration storageConfiguration = new StorageConfiguration.Builder().build();
         StorageManager storageManager = new StorageManager(disk, storageConfiguration, writeAheadLog);
 

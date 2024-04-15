@@ -22,7 +22,7 @@ public class DataSeeder {
               Record record = new Record(tconst, averageRating, numVotes, (short) 0);
               records.add(record);
           } else {
-              System.err.println(String.format("Expected 3 columns but received: %s", parts));
+              System.err.println(String.format("Expected 3 columns but received: %s", parts.toString()));
           }
       }
 
