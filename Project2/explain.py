@@ -24,7 +24,7 @@ def run_explain(query, conn):
     list: A list of dictionaries representing the JSON formatted execution plan returned by PostgreSQL.
     """
     with conn.cursor() as cur:
-        cur.execute(f"EXPLAIN (ANALYZE true, FORMAT json) {query}")
+        cur.execute(f"EXPLAIN (ANALYZE true, BUFFERS true, FORMAT json) {query}")
         explain_output = cur.fetchone()[0]
         logging.info("EXPLAIN command executed successfully.")
         # psycopg2 implicitly converts the JSON output to a list of dictionaries (python)
@@ -33,8 +33,8 @@ def run_explain(query, conn):
 
 def analyze_node(node):
     """
-    Analyze a single node within the execution plan, extracting both estimated
-    and computed cost metrics, and recursively processing any sub-plans.
+    Analyze a single node within the execution plan, extracting estimated cost metrics from the PostgreSQL planner
+    ,  and recursively processing any sub-plans.
 
     Parameters:
     node (dict): A single node from the JSON execution plan.
@@ -44,8 +44,6 @@ def analyze_node(node):
     """
     # Extract estimated cost metrics provided by PostgreSQL
     estimated_cost = extract_cost_metrics(node)
-    # Compute custom cost metrics based on what we've learned in the lectures
-    computed_cost = compute_node_cost(node)
 
     # Create a dictionary for this node's analysis that includes both sets of cost metrics
     node_analysis = {
@@ -53,7 +51,7 @@ def analyze_node(node):
         'Relation Name': node.get('Relation Name', 'N/A'),
         'Cost Analysis': {
             'Estimated Costs': estimated_cost,
-            'Computed Costs': computed_cost
+            'Explanation': "TODO" # TODO
         }
     }
 
@@ -99,7 +97,7 @@ def extract_cost_metrics(node):
     """
     cost_metrics = {
         'Node Type': node.get('Node Type'),
-        'Startup Cost': node.get('Startup Cost', 0.0),  # might not be useful for us
+        'Startup Cost': node.get('Startup Cost', 0.0),
         'Total Cost': node.get('Total Cost', 0.0),
         'Plan Rows': node.get('Plan Rows', 0),
         'Plan Width': node.get('Plan Width', 0),
@@ -107,29 +105,14 @@ def extract_cost_metrics(node):
         'Actual Total Time': node.get('Actual Total Time', 0.0),  # might not be useful for us
         'Actual Rows': node.get('Actual Rows', 0),
         'Actual Loops': node.get('Actual Loops', 1),
+        'Shared Hit Blocks': node.get('Shared Hit Blocks', 0),  # needed for scan formula
+        'Shared Read Blocks': node.get('Shared Read Blocks', 0),
+        'Shared Dirtied Blocks': node.get('Shared Dirtied Blocks', 0),
+        'Shared Written Blocks': node.get('Shared Written Blocks', 0),
     }
 
     return cost_metrics
 
-
-# TODO: Compute custom cost metrics based on what we've learned in the lectures
-def compute_node_cost(node):
-    """
-    Utility function to compute custom cost metrics of a node in the execution plan.
-
-    Parameters:
-    node (dict): Node of the execution plan.
-
-    Returns:
-    dict: The computed costs and other relevant metrics for the node.
-    """
-    # Temporary, to be replaced with actual computation
-    computed_cost = {
-        'IO Cost': 2,
-        'Cardinality of output (no. of rows)': 20,
-    }
-
-    return computed_cost
 
 # TODO: Function to explain the computation of various cost in the QEP, explaining differences if any
 
