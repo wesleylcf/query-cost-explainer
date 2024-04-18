@@ -1,131 +1,185 @@
+
 import logging
 import json
+from collections import defaultdict
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+RELATION_PROPERTIES_QUERY = """
+SELECT relname, reltuples, relpages 
+FROM pg_class 
+WHERE relkind IN ('r');
+"""
 
-def run_explain(query, conn):
-    """
-    Executes the EXPLAIN command on a given SQL query using a PostgreSQL connection
-    and returns the JSON-formatted plan.
+class Explainer:
+    tableSet = {'lineitem', 'orders','customer','partsupp','supplier','part','nation','region'}
+    tableToProperties = defaultdict(lambda: {})
 
-    See 'EXPLAIN' documentation:
-    https://www.postgresql.org/docs/current/sql-explain.html
+    def __init__(self, conn):
+        self.conn = conn
 
-    See psycopg2 documentation:
-    https://www.psycopg.org/docs/cursor.html#cursor.execute
+        result = self.run(RELATION_PROPERTIES_QUERY)
+        for name, tuple_count, page_count in result:
+            if name in self.tableSet:
+                self.tableToProperties[name]['tuple_count'] = tuple_count
+                self.tableToProperties[name]['page_count'] = page_count
 
-    Parameters:
-    query (str): SQL query to be explained.
-    conn (psycopg2.connection): Active database connection object.
+        self.cost_estimator = CostEstimator(self.tableToProperties)
 
-    Returns:
-    list: A list of dictionaries representing the JSON formatted execution plan returned by PostgreSQL.
-    """
-    with conn.cursor() as cur:
-        cur.execute(f"EXPLAIN (ANALYZE true, BUFFERS true, FORMAT json) {query}")
-        explain_output = cur.fetchone()[0]
-        logging.info("EXPLAIN command executed successfully.")
-        # psycopg2 implicitly converts the JSON output to a list of dictionaries (python)
-        return explain_output
+    def run(self, query):
+        cur = self.conn.cursor()
+        cur.execute(query)
+        rows = cur.fetchall()
+        return rows
 
+    def run_explain(self, query):
+        """
+        Executes the EXPLAIN command on a given SQL query using a PostgreSQL connection
+        and returns the JSON-formatted plan.
 
-def analyze_node(node):
-    """
-    Analyze a single node within the execution plan, extracting estimated cost metrics from the PostgreSQL planner
-    ,  and recursively processing any sub-plans.
+        See 'EXPLAIN' documentation:
+        https://www.postgresql.org/docs/current/sql-explain.html
 
-    Parameters:
-    node (dict): A single node from the JSON execution plan.
+        See psycopg2 documentation:
+        https://www.psycopg.org/docs/cursor.html#cursor.execute
 
-    Returns:
-    dict: Node and sub-nodes analysis including both estimated and computed costs.
-    """
-    # Extract estimated cost metrics provided by PostgreSQL
-    estimated_cost = extract_cost_metrics(node)
+        Parameters:
+        query (str): SQL query to be explained.
+        conn (psycopg2.connection): Active database connection object.
 
-    # Create a dictionary for this node's analysis that includes both sets of cost metrics
-    node_analysis = {
-        'Node Type': node.get('Node Type'),
-        'Relation Name': node.get('Relation Name', 'N/A'),
-        'Cost Analysis': {
-            'Estimated Costs': estimated_cost,
-            'Explanation': "TODO" # TODO
+        Returns:
+        list: A list of dictionaries representing the JSON formatted execution plan returned by PostgreSQL.
+        """
+        with self.conn.cursor() as cur:
+            # cur.execute(f"EXPLAIN (ANALYZE true, BUFFERS true, FORMAT json) {query}")
+            cur.execute(f"EXPLAIN (ANALYZE true, FORMAT json) {query}")
+            explain_output = cur.fetchone()[0]
+            logging.info("EXPLAIN command executed successfully.")
+            # psycopg2 implicitly converts the JSON output to a list of dictionaries (python)
+            return explain_output
+
+    def analyze_node(self, node):
+        """
+        Analyze a single node within the execution plan, extracting estimated cost metrics from the PostgreSQL planner
+        ,  and recursively processing any sub-plans.
+
+        Parameters:
+        node (dict): A single node from the JSON execution plan.
+
+        Returns:
+        dict: Node and sub-nodes analysis including both estimated and computed costs.
+        """
+        # Extract estimated cost metrics provided by PostgreSQL
+        plan_properties = self.get_plan_properties(node)
+        estimated_cost, explanation = self.cost_estimator.estimate(node)
+
+        # Create a dictionary for this node's analysis that includes both sets of cost metrics
+        node_analysis = {
+            'Node Type': node.get('Node Type'),
+            'Relation Name': node.get('Relation Name', 'N/A'),
+            'Cost Analysis': {
+                'Actual Estimated Cost': node.get('Total Cost'),
+                'Estimated Cost': estimated_cost,
+                'Explanation': explanation
+            }
         }
-    }
 
-    # Recursively analyze any sub-plans and include their analysis
-    if 'Plans' in node:
-        sub_plans = [analyze_node(sub_node) for sub_node in node['Plans']]
-        node_analysis['Sub-plans'] = sub_plans
+        # Recursively analyze any sub-plans and include their analysis
+        if 'Plans' in node:
+            sub_plans = [self.analyze_node(sub_node) for sub_node in node['Plans']]
+            node_analysis['Sub-plans'] = sub_plans
 
-    return node_analysis
-
-
-def analyze_execution_plan(explain_output):
-    """
-    Initiates the recursive analysis of the entire execution plan from the top-level node.
-
-    Parameters:
-    explain_output (list): The JSON execution plan as a list from PostgreSQL.
-
-    Returns:
-    dict: A dictionary representing the analyzed execution plan including nested sub-plans.
-    """
-    if explain_output:
-        # The execution plan is enclosed in a list -> start with the first item
-        return analyze_node(explain_output[0]['Plan'])
-    else:
-        logging.error("No execution plan found.")
-        return {}
+        return node_analysis
 
 
-def extract_cost_metrics(node):
-    """
-    Utility function to extract cost-related metrics from a node in the execution plan.
-    These metrics are cost estimates calculated by the PostgreSQL planner.
+    def analyze_execution_plan(self, explain_output):
+        """
+        Initiates the recursive analysis of the entire execution plan from the top-level node.
 
-    See 'JSON Format Explain Plan' section in:
-    https://www.postgresonline.com/journal/archives/171-Explain-Plans-PostgreSQL-9.0-Text,-JSON,-XML,-YAML-Part-1-You-Choose.html
+        Parameters:
+        explain_output (list): The JSON execution plan as a list from PostgreSQL.
 
-    Parameters:
-    node (dict): Node of the execution plan.
-
-    Returns:
-    dict: Extracted cost metrics.
-    """
-    cost_metrics = {
-        'Node Type': node.get('Node Type'),
-        'Startup Cost': node.get('Startup Cost', 0.0),
-        'Total Cost': node.get('Total Cost', 0.0),
-        'Plan Rows': node.get('Plan Rows', 0),
-        'Plan Width': node.get('Plan Width', 0),
-        'Actual Startup Time': node.get('Actual Startup Time', 0.0),  # might not be useful for us
-        'Actual Total Time': node.get('Actual Total Time', 0.0),  # might not be useful for us
-        'Actual Rows': node.get('Actual Rows', 0),
-        'Actual Loops': node.get('Actual Loops', 1),
-        'Shared Hit Blocks': node.get('Shared Hit Blocks', 0),  # needed for scan formula
-        'Shared Read Blocks': node.get('Shared Read Blocks', 0),
-        'Shared Dirtied Blocks': node.get('Shared Dirtied Blocks', 0),
-        'Shared Written Blocks': node.get('Shared Written Blocks', 0),
-    }
-
-    return cost_metrics
+        Returns:
+        dict: A dictionary representing the analyzed execution plan including nested sub-plans.
+        """
+        if explain_output:
+            # The execution plan is enclosed in a list -> start with the first item
+            return self.analyze_node(explain_output[0]['Plan'])
+        else:
+            logging.error("No execution plan found.")
+            return {}
 
 
-# TODO: Function to explain the computation of various cost in the QEP, explaining differences if any
+    def get_plan_properties(self, node):
+        """
+        Utility function to extract cost-related metrics from a node in the execution plan.
+        These metrics are cost estimates calculated by the PostgreSQL planner.
 
-def generate_report(analysis_results):
-    """
-    Generates a formatted JSON report from the analysis results.
+        See 'JSON Format Explain Plan' section in:
+        https://www.postgresonline.com/journal/archives/171-Explain-Plans-PostgreSQL-9.0-Text,-JSON,-XML,-YAML-Part-1-You-Choose.html
 
-    Parameters:
-    analysis_results (dict): Analysis results of the execution plan.
+        Parameters:
+        node (dict): Node of the execution plan.
 
-    Returns:
-    str: A string representation of the JSON-formatted analysis report.
-    """
-    report = json.dumps(analysis_results, indent=4)
-    logging.info("Report generated.")
-    return report
+        Returns:
+        dict: Extracted cost metrics.
+        """
+        props = {
+            'Node Type': node.get('Node Type'),
+            'Startup Cost': node.get('Startup Cost', 0.0),
+            'Total Cost': node.get('Total Cost', 0.0),
+            'Plan Rows': node.get('Plan Rows', 0),
+            'Plan Width': node.get('Plan Width', 0),
+            'Actual Startup Time': node.get('Actual Startup Time', 0.0),  # might not be useful for us
+            'Actual Total Time': node.get('Actual Total Time', 0.0),  # might not be useful for us
+            'Actual Rows': node.get('Actual Rows', 0),
+            'Actual Loops': node.get('Actual Loops', 1),
+            'Shared Hit Blocks': node.get('Shared Hit Blocks', 0),  # needed for scan formula
+            'Shared Read Blocks': node.get('Shared Read Blocks', 0),
+            'Shared Dirtied Blocks': node.get('Shared Dirtied Blocks', 0),
+            'Shared Written Blocks': node.get('Shared Written Blocks', 0),
+        }
+
+        return props
+
+
+    # TODO: Function to explain the computation of various cost in the QEP, explaining differences if any
+
+    def generate_report(self, analysis_results):
+        """
+        Generates a formatted JSON report from the analysis results.
+
+        Parameters:
+        analysis_results (dict): Analysis results of the execution plan.
+
+        Returns:
+        str: A string representation of the JSON-formatted analysis report.
+        """
+        report = json.dumps(analysis_results, indent=4)
+        logging.info("Report generated.")
+        return report
+        
+class CostEstimator:
+    SEQ_PAGE_COST = 1
+    CPU_TUPLE_COST = 0.01
+    CPU_OPERATOR_COST = 0.0025
+
+    def __init__(self, table_properties):
+        self.table_properties = table_properties
+
+    def scan_cost_function(self, node) -> float:
+        rows, table_props = node['Plan Rows'], self.table_properties[node['Relation Name']]
+        seq_pages_accessed = table_props['page_count']
+        print('test', seq_pages_accessed, rows)
+        explanation = f"""Cost function: (seq_pages_accessed * {self.SEQ_PAGE_COST}) + (rows * {self.CPU_TUPLE_COST})
+        where seq_pages_accessed= {seq_pages_accessed} and rows= {rows}
+        """
+        return [(seq_pages_accessed * self.SEQ_PAGE_COST) + (rows * self.CPU_TUPLE_COST), explanation]
+
+    def estimate(self, node):
+        operator = node['Node Type']
+        if operator == 'Seq Scan':
+            return self.scan_cost_function(node)
+        else:
+            raise Exception(f"Cost function is undefined for operator {operator}")
