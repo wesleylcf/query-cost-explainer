@@ -6,32 +6,61 @@ from collections import defaultdict
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+REFRESH_STATS_QUERY = """
+DO $$
+DECLARE
+    table_name TEXT;
+BEGIN
+    FOR table_name IN
+        SELECT tablename
+        FROM pg_catalog.pg_tables
+        WHERE schemaname = 'public' -- Specify the schema if needed
+    LOOP
+        EXECUTE format('ANALYZE %I', table_name);
+    END LOOP;
+END $$;
+"""
+
 RELATION_PROPERTIES_QUERY = """
 SELECT relname, reltuples, relpages 
 FROM pg_class 
 WHERE relkind IN ('r');
 """
 
+SETTINGS_QUERY = """
+SELECT relname, current_setting('random_page_cost')::real,current_setting('cpu_index_tuple_cost')::real, current_setting('cpu_operator_cost')::real, current_setting('cpu_tuple_cost')::real, current_setting('seq_page_cost')::real, relpages AS pages, reltuples AS tuples
+from pg_class;
+"""
+
 class Explainer:
     tableSet = {'lineitem', 'orders','customer','partsupp','supplier','part','nation','region'}
-    tableToProperties = defaultdict(lambda: {})
+    properties = defaultdict(lambda: {})
 
     def __init__(self, conn):
         self.conn = conn
+        self.run(REFRESH_STATS_QUERY)
 
-        result = self.run(RELATION_PROPERTIES_QUERY)
-        for name, tuple_count, page_count in result:
-            if name in self.tableSet:
-                self.tableToProperties[name]['tuple_count'] = tuple_count
-                self.tableToProperties[name]['page_count'] = page_count
+        result = self.run(SETTINGS_QUERY)
+        for relname, random_page_cost, cpu_index_tuple_cost, cpu_operator_cost, cpu_tuple_cost, seq_page_cost, pages, tuples in result:
+            if relname.split('_')[0] in self.tableSet:
+                self.properties[relname]['pages'] = pages
+                self.properties[relname]['tuples'] = tuples
+                self.properties['random_page_cost'] = random_page_cost
+                self.properties['cpu_index_tuple_cost'] = cpu_index_tuple_cost
+                self.properties['cpu_operator_cost'] = cpu_operator_cost
+                self.properties['cpu_tuple_cost'] = cpu_tuple_cost
+                self.properties['seq_page_cost'] = seq_page_cost
 
-        self.cost_estimator = CostEstimator(self.tableToProperties)
+        self.cost_estimator = CostEstimator(self.properties)
 
     def run(self, query):
         cur = self.conn.cursor()
         cur.execute(query)
-        rows = cur.fetchall()
-        return rows
+        try:
+            return cur.fetchall()
+        except:
+            logging.warning("No rows fetched; Returning []")
+            return []
 
     def run_explain(self, query):
         """
@@ -165,16 +194,14 @@ class CostEstimator:
     CPU_TUPLE_COST = 0.01
     CPU_OPERATOR_COST = 0.0025
 
-    def __init__(self, table_properties):
-        self.table_properties = table_properties
+    def __init__(self, properties):
+        self.properties = properties
 
     def scan_cost_function(self, node) -> float:
-        rows, table_props = node['Plan Rows'], self.table_properties[node['Relation Name']]
-        seq_pages_accessed = table_props['page_count']
+        rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
+        seq_pages_accessed = table_props['pages']
         print('test', seq_pages_accessed, rows)
-        explanation = f"""Cost function: (seq_pages_accessed * {self.SEQ_PAGE_COST}) + (rows * {self.CPU_TUPLE_COST})
-        where seq_pages_accessed= {seq_pages_accessed} and rows= {rows}
-        """
+        explanation = f"Cost function: (seq_pages_accessed * {self.SEQ_PAGE_COST}) + (rows * {self.CPU_TUPLE_COST})\nwhere seq_pages_accessed= {seq_pages_accessed} and rows= {rows}"
         return [(seq_pages_accessed * self.SEQ_PAGE_COST) + (rows * self.CPU_TUPLE_COST), explanation]
 
     def estimate(self, node):
