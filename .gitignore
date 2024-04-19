@@ -4,3 +4,6 @@
 # Jetbrain IDE
 .idea/
 *.iml
+venv/
+.vscode
+Project2/venv

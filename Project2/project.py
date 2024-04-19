@@ -17,6 +17,9 @@ def init():
     Initialize the application by establishing a connection to the database.
     """
     global conn
+    # window = UI()
+    # window.setOnDatabaseChanged( lambda: self.onDatabaseChanged())
+    # window.setOnAnalyseClicked( lambda: self.analyseQuery() )
     try:
         conn = psycopg2.connect(
             dbname="TPC-H",
