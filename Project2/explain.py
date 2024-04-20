@@ -108,7 +108,12 @@ class Explainer:
         if 'Plans' in node:
             for child in node['Plans']:
                 child_node = self.analyze_node(child)
-                node['estimated_cost'] += child_node['Total Cost']
+                # Special handling for 'Limit' nodes, as they do not add cost to their children
+                if node['Node Type'] == 'Limit':
+                    continue
+                else:
+                    # Regular behavior of non-LIMIT nodes: add child costs
+                    node['estimated_cost'] += child_node['Total Cost']
         
         node['estimated_cost'] = round(node['estimated_cost'], 2)
 
@@ -180,6 +185,10 @@ class CostEstimator:
             return self.aggregate_cost_function(node)
         if operator == 'Gather':
             return self.gather_cost_function(node)
+        if operator == 'Limit':
+            return self.limit_cost_function(node)
+        if operator == 'Gather Merge':
+            return self.gather_merge_cost_function(node)
         else:
             raise Exception(f"Cost function is undefined for operator {operator}")
 
@@ -338,7 +347,7 @@ class CostEstimator:
     def gather_cost_function(self, node):
         # See documentation: https://www.postgresql.org/docs/current/how-parallel-query-works.html
 
-        base_gather_cost = 1000  # Fixed base cost observed empirically and suggested by typical plans
+        base_gather_cost = 1000  # Fixed base cost
         cost_per_worker = 0.1  # Fixed cost per worker observed empirically
         number_of_workers = node.get('Workers Launched', 1)
 
@@ -360,3 +369,39 @@ class CostEstimator:
         explanation.append("The cost per worker represents the additional cost for each worker process involved in the parallel execution based on empirical data.")
 
         return [total_cost, explanation]
+
+    def limit_cost_function(self, node):
+        # See StackOverflow: https://stackoverflow.com/questions/75522000/why-postgresql-explain-cost-is-low-in-limit-and-result-phase-but-high-in-index-s
+
+        child_node = node['Plans'][0]
+        child_cost = child_node['Total Cost']
+        child_rows = child_node['Plan Rows']  # Total rows the child node would process without limit
+        limit_rows = node['Plan Rows']  # Number of rows after applying LIMIT
+
+        # Assuming the limit_rows are less than the child_rows, we adjust the cost proportionally
+        if limit_rows < child_rows and child_rows > 0:
+            cost_reduction_factor = limit_rows / child_rows
+        else:
+            cost_reduction_factor = 1  # No reduction if limit is equal to potential rows
+
+        # Minimum scale factor to avoid overestimation (too complex to calculate)
+        min_scale_factor = 0.2
+        if(cost_reduction_factor != 1):
+            cost_reduction_factor = max(cost_reduction_factor, min_scale_factor)
+
+        # Adjusted cost considers the early termination of the scan or operation
+        total_cost = child_cost * cost_reduction_factor
+
+        explanation = []
+        explanation.append("Formula: Total Cost = child_cost * cost_reduction_factor")
+        explanation.append(f"cost_reduction_factor = limit_rows({limit_rows}) / child_rows({child_rows}) = {cost_reduction_factor}")
+        explanation.append(f"Total Cost = child_cost({child_cost}) * cost_reduction_factor({cost_reduction_factor}) = {total_cost}")
+        explanation.append("Note:")
+        explanation.append("The cost reduction factor accounts for the early termination of the operation due to the LIMIT clause.")
+        explanation.append("When dealing with non-scan children like Gather Merge node, the standard formula for cost_reduction_factor might not always make sense.")
+        explanation.append("=> This is because the non-scan child node may perform complex operations like parallel merging.")
+        explanation.append("=> Hence, a minimum scale factor of 0.2 is applied to avoid overestimation in such cases.")
+        explanation.append("=> This formula is a simplified version and may not cover all edge cases accurately, however, it is accurate for scan type children nodes.")
+
+        return [total_cost, explanation]
+
