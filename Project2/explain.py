@@ -251,7 +251,10 @@ class CostEstimator:
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
         seq_pages_accessed = table_props['pages']
         total_cost = (seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost'])
-        explanation = f"Total cost = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
+        explanation = (
+            f"Total cost = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + "
+            f"rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
+        )        
         return [total_cost, explanation]
 
     def index_scan_cost(self, node):
@@ -354,7 +357,6 @@ class CostEstimator:
         probe_costs = []
 
         for child in node['Plans']:
-            print(child)
             build_relation = child
             if 'Plans' in child:
                 probe_relation = child['Plans'][0]
@@ -379,7 +381,6 @@ class CostEstimator:
         total_cost = total_build_cost + total_probe_cost
 
         explanation_array = [
-            f"Explanation for {node['Node Type']}",
             f"Total Build Phase Cost: {round(total_build_cost, 2)}",
             f"Total Probe Phase Cost: {round(total_probe_cost, 2)}",
             f"Total Cost: {round(total_cost, 2)}"
@@ -405,7 +406,7 @@ class CostEstimator:
         sort_cost = input_rows * (cpu_operator_cost + (disk_cost_per_page * pages))
         total_cost = round(sort_cost + node['Total Cost'], 2)
 
-        explanation = f"Total cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
+        explanation = f"Total Sort cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
         return [total_cost, explanation]\
 
 
