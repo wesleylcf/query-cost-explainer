@@ -1,6 +1,5 @@
 from PyQt5 import uic
 from PyQt5.QtWidgets import *
-from qt_material import apply_stylesheet
 
 class UI(QMainWindow):
     def __init__(self):
