@@ -168,6 +168,12 @@ class CostEstimator:
             return self.materialize_cost_function(node)
         if operator == 'Nested Loop':
             return self.nested_loop_cost_function(node)
+        if operator == 'Merge Join':
+            return self.merge_join_function_cost_function(node)
+        if operator == 'Hash Join':
+            return self.hash_join_cost_function(node)
+        if operator == 'Unique':        
+            return self.unique_cost_function(node)
         else:
             raise Exception(f"Cost function is undefined for operator {operator}")
 
