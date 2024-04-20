@@ -28,7 +28,7 @@ WHERE relkind IN ('r');
 """
 
 SETTINGS_QUERY = """
-SELECT relname, current_setting('random_page_cost')::real,current_setting('cpu_index_tuple_cost')::real, current_setting('cpu_operator_cost')::real, current_setting('cpu_tuple_cost')::real, current_setting('seq_page_cost')::real, relpages AS pages, reltuples AS tuples
+SELECT relname, current_setting('random_page_cost')::real,current_setting('cpu_index_tuple_cost')::real, current_setting('cpu_operator_cost')::real, current_setting('cpu_tuple_cost')::real, current_setting('seq_page_cost')::real, relpages AS pages, reltuples AS tuples, relallvisible as visible_pages
 from pg_class;
 """
 
@@ -41,9 +41,10 @@ class Explainer:
         self.run(REFRESH_STATS_QUERY)
 
         result = self.run(SETTINGS_QUERY)
-        for relname, random_page_cost, cpu_index_tuple_cost, cpu_operator_cost, cpu_tuple_cost, seq_page_cost, pages, tuples in result:
+        for relname, random_page_cost, cpu_index_tuple_cost, cpu_operator_cost, cpu_tuple_cost, seq_page_cost, pages, tuples, visible_pages in result:
             if relname.split('_')[0] in self.tableSet:
                 self.properties[relname]['pages'] = pages
+                self.properties[relname]['visible_pages'] = visible_pages
                 self.properties[relname]['tuples'] = tuples
                 self.properties['random_page_cost'] = random_page_cost
                 self.properties['cpu_index_tuple_cost'] = cpu_index_tuple_cost
@@ -190,23 +191,51 @@ class Explainer:
         return report
         
 class CostEstimator:
-    SEQ_PAGE_COST = 1
-    CPU_TUPLE_COST = 0.01
-    CPU_OPERATOR_COST = 0.0025
-
     def __init__(self, properties):
         self.properties = properties
-
-    def scan_cost_function(self, node) -> float:
-        rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
-        seq_pages_accessed = table_props['pages']
-        print('test', seq_pages_accessed, rows)
-        explanation = f"Cost function: (seq_pages_accessed * {self.SEQ_PAGE_COST}) + (rows * {self.CPU_TUPLE_COST})\nwhere seq_pages_accessed= {seq_pages_accessed} and rows= {rows}"
-        return [(seq_pages_accessed * self.SEQ_PAGE_COST) + (rows * self.CPU_TUPLE_COST), explanation]
 
     def estimate(self, node):
         operator = node['Node Type']
         if operator == 'Seq Scan':
             return self.scan_cost_function(node)
+        if operator == 'Index Only Scan':
+            return self.index_only_scan_cost_function(node)
         else:
             raise Exception(f"Cost function is undefined for operator {operator}")
+
+    def scan_cost_function(self, node):
+        rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
+        seq_pages_accessed = table_props['pages']
+        explanation = f"Cost function: (seq_pages_accessed * {self.properties['seq_page_cost']}) + (rows * {self.properties['cpu_tuple_cost']})\nwhere seq_pages_accessed= {seq_pages_accessed} and rows= {rows}"
+        return [(seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost']), explanation]
+
+    def index_only_scan_cost_function(self, node) -> float:
+        explanation_array = ["Formula: total_cost = index_access_cost + table_pages_fetch_cost"]
+        relation_name, rows = node['Relation Name'], node['Plan Rows']
+        relation_pages, relation_tuples =  self.properties[relation_name]['pages'], self.properties[relation_name]['tuples']
+
+        index_selectivity = rows/relation_tuples
+        explanation_array.append("Calculation for index_access_cost:")
+        explanation_array.append(f"index_selectivity = estimated_rows({rows}) / total_rows({relation_tuples}) = {index_selectivity}")
+
+        estimated_pages, estimated_tuples = relation_pages * index_selectivity, relation_tuples * index_selectivity
+        explanation_array.append(f"estimated_pages = selectivity({index_selectivity}) * total pages({relation_pages}) = {estimated_pages}")
+        explanation_array.append(f"estimated_tuples = selectivity({index_selectivity}) * total tuples({relation_tuples}) = {estimated_tuples}")
+
+        estimated_index_pages = self.properties[node['Index Name']]['pages']
+        random_page_cost, cpu_index_tuple_cost, cpu_operator_cost, cpu_tuple_cost, seq_page_cost = self.properties['random_page_cost'], self.properties['cpu_index_tuple_cost'], self.properties['cpu_operator_cost'], self.properties['cpu_tuple_cost'], self.properties['seq_page_cost']
+        explanation_array.append(f"From DB: random_page_cost={random_page_cost} cpu_index_tuple_cost={cpu_index_tuple_cost} cpu_operator_cost={cpu_operator_cost} cpu_tuple_cost={cpu_tuple_cost} seq_page_cost={seq_page_cost}")
+        estimated_index_cost = estimated_index_pages * random_page_cost + estimated_tuples * (cpu_index_tuple_cost + cpu_operator_cost)
+        explanation_array.append(f"index_access_cost = estimated_index_pages({estimated_pages}) * random_page_cost({random_page_cost}) + estimated_tuples({estimated_tuples}) * (cpu_index_tuple_cost({cpu_index_tuple_cost}) + cpu_operator_cost({cpu_operator_cost})) = {estimated_index_cost}")
+        
+        explanation_array.append("Calculation for index_access_cost:")
+        frac_visible = self.properties[relation_name]['visible_pages']/relation_pages
+        explanation_array.append(f"fraction_pages_visible = relallvisible({self.properties[relation_name]['visible_pages']}) / total_pages({relation_pages}) = {frac_visible}")
+        estimated_table_cost = (1-frac_visible) * estimated_pages * seq_page_cost + estimated_tuples * cpu_tuple_cost
+        explanation_array.append(f"table_pages_fetch_cost = (1-frac_visible={frac_visible}) * estimated_pages({estimated_pages}) * seq_page_cost({seq_page_cost}) + estimated_tuples({estimated_tuples}) * cpu_tuple_cost({cpu_tuple_cost})")
+
+        estimated_total_cost = estimated_index_cost + estimated_table_cost
+        explanation_array.append(f"Therefore total cost = index_access_cost({estimated_index_cost}) + table_pages_fetch_cost({estimated_table_cost}) = {estimated_total_cost}")
+        explanation = '\n'.join(explanation_array)
+
+        return [estimated_total_cost, explanation]
