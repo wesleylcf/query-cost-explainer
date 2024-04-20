@@ -270,7 +270,7 @@ class CostEstimator:
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
     
-    def gather_cost_function(self, node):
+    def unique_cost_function(self, node):
         explanation_array = ["Formula: total_cost = child_cost"]
         child_cost = node['Total Cost']
         explanation_array.append(f"child_cost = {child_cost}")
