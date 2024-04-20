@@ -190,10 +190,6 @@ class Explainer:
         return report
         
 class CostEstimator:
-    SEQ_PAGE_COST = 1
-    CPU_TUPLE_COST = 0.01
-    CPU_OPERATOR_COST = 0.0025
-
     def __init__(self, properties):
         self.properties = properties
 
@@ -201,8 +197,8 @@ class CostEstimator:
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
         seq_pages_accessed = table_props['pages']
         print('test', seq_pages_accessed, rows)
-        explanation = f"Cost function: (seq_pages_accessed * {self.SEQ_PAGE_COST}) + (rows * {self.CPU_TUPLE_COST})\nwhere seq_pages_accessed= {seq_pages_accessed} and rows= {rows}"
-        return [(seq_pages_accessed * self.SEQ_PAGE_COST) + (rows * self.CPU_TUPLE_COST), explanation]
+        explanation = f"Cost function: (seq_pages_accessed * {self.properties['seq_page_cost']}) + (rows * {self.properties['cpu_tuple_cost']})\nwhere seq_pages_accessed= {seq_pages_accessed} and rows= {rows}"
+        return [(seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost']), explanation]
 
     def estimate(self, node):
         operator = node['Node Type']
