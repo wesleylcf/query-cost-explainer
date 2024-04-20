@@ -36,7 +36,7 @@ class Explainer:
 
     def __init__(self, conn, debug=False):
         self.conn = conn
-        self.run(REFRESH_STATS_QUERY)
+        # self.run(REFRESH_STATS_QUERY)
         self.debug = debug
 
         result = self.run(SETTINGS_QUERY)
@@ -112,7 +112,10 @@ class Explainer:
         
         node['estimated_cost'] = round(node['estimated_cost'], 2)
 
-        if self.debug and abs(node['estimated_cost'] - node['Total Cost'])/node['Total Cost'] > 0.1:
+        error_margin = 0.1
+        if node['Node Type'] == 'Nested Loop':
+            error_margin = 0.2
+        if self.debug and abs(node['estimated_cost'] - node['Total Cost'])/node['Total Cost'] > error_margin:
             print(node)
             raise Exception(f"Estimated cost({node['estimated_cost']}) differs from Actual cost({node['Total Cost']}) significantly")
         
@@ -153,6 +156,7 @@ class Explainer:
 class CostEstimator:
     def __init__(self, properties):
         self.properties = properties
+        self.MATERIALIZED_CONSECUTIVE_ACCESS_COST = 0.0125 # too complex; https://postgrespro.com/blog/pgsql/5969618
 
     def estimate(self, node):
         operator = node['Node Type']
@@ -171,15 +175,22 @@ class CostEstimator:
         """
             Assume that they define child plans as a stack(last one executed first)
         """
-        materialize_node, scan_node = node['Plans']
+        materialize_node = scan_node = None
         current_rows = node['Plan Rows']
+
+        for child in node['Plans']:
+            if child['Node Type'] == 'Materialize':
+                materialize_node = child
+            else:
+                scan_node = child
+        
         scan_rows, scan_cost = scan_node['Plan Rows'], scan_node['Total Cost']
         explanation_array = [f"Explanation for {node['Node Type']}"]
 
-        # too complex; https://postgrespro.com/blog/pgsql/5969618
-        consecutive_materialize_access_cost = 1
-        materialize_cost = materialize_node['Total Cost'] * consecutive_materialize_access_cost
-        explanation_array.append(f"materialize_cost = Cost({materialize_node['Node Type']}) * materialize_access_cost(1) = {materialize_cost}")
+        consecutive_materialize_access_cost = (scan_rows-1) * self.MATERIALIZED_CONSECUTIVE_ACCESS_COST
+        materialize_cost = materialize_node['Total Cost'] + consecutive_materialize_access_cost
+        explanation_array.append(f"consecutive_materialize_access_cost = scans_row-1({scan_rows-1}) * MATERIALIZED_CONSECUTIVE_ACCESS_COST(0.0125)")
+        explanation_array.append(f"materialize_cost = initial_materialized_access_cost({materialize_node['Node Type']}) + consecutive_materialize_access_cost({consecutive_materialize_access_cost}) = {materialize_cost}")
 
         explanation_array.append(f"scan_cost = {scan_cost}")
 

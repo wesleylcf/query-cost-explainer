@@ -31,3 +31,13 @@ for qry in index_only_queries:
   out = explainer.run_explain(qry)
   explainer.analyze_execution_plan(out)
   print(f"OK")
+
+print('Testing Nested Loop...')
+for tableName in explainer.tableSet:
+  qry = f"SELECT * FROM {tableName} CROSS JOIN public.nation;"
+  if tableName == 'nation':
+    qry = f"SELECT * FROM {tableName} CROSS JOIN public.region;"
+  print(qry)
+  out = explainer.run_explain(qry)
+  explainer.analyze_execution_plan(out)
+  print(f"OK")
