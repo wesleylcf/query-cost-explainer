@@ -241,7 +241,20 @@ class CostEstimator:
         return [estimated_total_cost, explanation]
     
     def merge_join_function_cost_function(self, node):
-        explanation_array = ["Formula: total_cost = left_cost + right_cost"]
+        # explanation_array = ["Formula: total_cost = left_cost + right_cost"]
+        # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
+        # left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
+        # left_pages, right_pages = left_props['pages'], right_props['pages']
+        # left_tups, right_tups = left_props['tuples'], right_props['tuples']
+        # left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
+        # right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
+        # explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
+        # explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
+        # estimated_total_cost = left_cost + right_cost
+        # explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) = {estimated_total_cost}")
+        # explanation = '\n'.join(explanation_array)
+        # return [estimated_total_cost, explanation]
+        explanation_array = ["Formula: total_cost = left_cost + right_cost + sort_cost"]
         left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
         left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
         left_pages, right_pages = left_props['pages'], right_props['pages']
@@ -250,13 +263,28 @@ class CostEstimator:
         right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
         explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
         explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
-        estimated_total_cost = left_cost + right_cost
-        explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) = {estimated_total_cost}")
+        sort_cost = (left_tups + right_tups) * math.log(left_tups + right_tups) * self.properties['cpu_operator_cost']
+        explanation_array.append(f"sort_cost = (left_tups({left_tups}) + right_tups({right_tups})) * log(left_tups({left_tups}) + right_tups({right_tups})) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
+        estimated_total_cost = left_cost + right_cost + sort_cost
+        explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + sort_cost({sort_cost}) = {estimated_total_cost}")
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
     
     def hash_join_cost_function(self, node):
-        explanation_array = ["Formula: total_cost = left_cost + right_cost"]
+        # explanation_array = ["Formula: total_cost = left_cost + right_cost"]
+        # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
+        # left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
+        # left_pages, right_pages = left_props['pages'], right_props['pages']
+        # left_tups, right_tups = left_props['tuples'], right_props['tuples']
+        # left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
+        # right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
+        # explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
+        # explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
+        # estimated_total_cost = left_cost + right_cost
+        # explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) = {estimated_total_cost}")
+        # explanation = '\n'.join(explanation_array)
+        # return [estimated_total_cost, explanation]
+        explanation_array = ["Formula: total_cost = left_cost + right_cost + hash_cost"]
         left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
         left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
         left_pages, right_pages = left_props['pages'], right_props['pages']
@@ -265,8 +293,11 @@ class CostEstimator:
         right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
         explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
         explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
-        estimated_total_cost = left_cost + right_cost
-        explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) = {estimated_total_cost}")
+        smaller_tups = min(left_tups, right_tups)
+        hash_cost = smaller_tups * self.properties['cpu_operator_cost']
+        explanation_array.append(f"hash_cost = smaller_tups({smaller_tups}) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {hash_cost}")
+        estimated_total_cost = left_cost + right_cost + hash_cost
+        explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + hash_cost({hash_cost}) = {estimated_total_cost}")
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
     
