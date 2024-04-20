@@ -174,6 +174,8 @@ class CostEstimator:
             return self.hash_join_cost_function(node)
         if operator == 'Unique':        
             return self.unique_cost_function(node)
+        if operator == 'Sort':
+            return self.sort_cost_function(node)
         else:
             raise Exception(f"Cost function is undefined for operator {operator}")
 
@@ -295,3 +297,16 @@ class CostEstimator:
         explanation_array.append(f"Therefore total cost = child_cost({child_cost}) = {estimated_total_cost}")
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
+    
+    def sort_cost_function(self, node):
+        input_rows = node['Plan Rows']
+        cpu_operator_cost = self.properties['cpu_operator_cost']
+        disk_cost_per_page = self.properties['seq_page_cost']
+        pages = node['Plan Rows'] / node['Plan Width']
+
+        sort_cost = input_rows * (cpu_operator_cost + (disk_cost_per_page * pages))
+        total_cost = round(sort_cost + node['Total Cost'], 2)
+
+        explanation = f"Total cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
+        return [total_cost, explanation]
+    

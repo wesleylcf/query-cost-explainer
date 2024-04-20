@@ -13,12 +13,21 @@ class UI(QMainWindow):
         self.btn_clear = self.findChild(QPushButton, "btn_clear")
         self.list_database = self.findChild(QComboBox, "combo_databases")
         self.tree_attrs = self.findChild(QTreeWidget, "tree_attrs")
+
         # init widgets
         self.tree_attrs.setHeaderLabels(["Schema"])
         self.btn_clear.clicked.connect(self.clear)
         self.list_database.currentIndexChanged.connect(self._onDatabaseChanged)
         self.tree_attrs.itemDoubleClicked.connect(self._onSchemaItemDoubleClicked)
-    
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_content = QWidget()
+        self.scroll_layout = QVBoxLayout(self.scroll_content)
+        self.scroll_layout.addWidget(self.label_qep)
+        self.scroll_area.setWidget(self.scroll_content)
+        self.verticalLayout_2.addWidget(self.scroll_area)
+        
     def showError(self, errMessage, execption=None):
         dialog = QMessageBox()
         dialog.setStyleSheet("QLabel{min-width: 300px;}");
