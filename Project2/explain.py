@@ -176,6 +176,10 @@ class CostEstimator:
             return self.unique_cost_function(node)
         if operator == 'Sort':
             return self.sort_cost_function(node)
+        if operator == 'Aggregate':
+            return self.aggregate_cost_function(node)
+        if operator == 'Gather':
+            return self.gather_cost_function(node)
         else:
             raise Exception(f"Cost function is undefined for operator {operator}")
 
@@ -220,7 +224,7 @@ class CostEstimator:
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
         seq_pages_accessed = table_props['pages']
         total_cost = (seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost'])
-        explanation = f"Total cos = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
+        explanation = f"Total cost = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
         return [total_cost, explanation]
 
     def index_only_scan_cost_function(self, node) -> float:
@@ -308,5 +312,51 @@ class CostEstimator:
         total_cost = round(sort_cost + node['Total Cost'], 2)
 
         explanation = f"Total cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
+        return [total_cost, explanation]\
+
+
+    def aggregate_cost_function(self, node):
+        cpu_operator_cost = self.properties['cpu_operator_cost']
+        cpu_tuple_cost = self.properties['cpu_tuple_cost']
+
+        child_node = node['Plans'][0]
+        rows_processed = child_node['Plan Rows']
+        child_cost = child_node['Total Cost']
+
+        estimated_rows_returned = 1  # Sum, Count etc. only return 1 row
+        total_cost = (rows_processed * cpu_operator_cost) + (estimated_rows_returned * cpu_tuple_cost)
+        total_cost_with_child = total_cost + child_cost
+
+        explanation = []
+        explanation.append("Formula: Total cost = (rows_processed * cpu_operator_cost) + (estimated_rows_returned * cpu_tuple_cost)")
+        explanation.append(f"Total Cost = (rows_processed({rows_processed}) * cpu_operator_cost({cpu_operator_cost})) + (estimated_rows_returned({estimated_rows_returned}) * cpu_tuple_cost({cpu_tuple_cost})) = {total_cost}")
+        explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
+        # explanation.append("Note: The actual cost may vary due to parallel execution efficiencies and other runtime factors.")
+
         return [total_cost, explanation]
-    
+
+    def gather_cost_function(self, node):
+        # See documentation: https://www.postgresql.org/docs/current/how-parallel-query-works.html
+
+        base_gather_cost = 1000  # Fixed base cost observed empirically and suggested by typical plans
+        cost_per_worker = 0.1  # Fixed cost per worker observed empirically
+        number_of_workers = node.get('Workers Launched', 1)
+
+        child_node = node['Plans'][0]
+        child_cost = child_node['Total Cost']
+
+        # Adding a minor variable cost based on the number of workers
+        worker_cost = cost_per_worker * number_of_workers
+
+        total_cost = base_gather_cost + worker_cost
+        total_cost_with_child = total_cost + child_cost
+
+        explanation = []
+        explanation.append("Formula: Total cost = base_gather_cost + (cost_per_worker * number_of_workers)")
+        explanation.append(f"Total Cost = base_gather_cost({base_gather_cost}) + (cost_per_worker({cost_per_worker}) * number_of_workers({number_of_workers})) = {total_cost}")
+        explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
+        explanation.append("Note:")
+        explanation.append("The base gather cost represents the fixed overhead for parallel query setup and coordination.")
+        explanation.append("The cost per worker represents the additional cost for each worker process involved in the parallel execution based on empirical data.")
+
+        return [total_cost, explanation]
