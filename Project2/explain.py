@@ -269,3 +269,12 @@ class CostEstimator:
         explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) = {estimated_total_cost}")
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
+    
+    def gather_function(self, node):
+        explanation_array = ["Formula: total_cost = child_cost"]
+        child_cost = node['Total Cost']
+        explanation_array.append(f"child_cost = {child_cost}")
+        estimated_total_cost = child_cost
+        explanation_array.append(f"Therefore total cost = child_cost({child_cost}) = {estimated_total_cost}")
+        explanation = '\n'.join(explanation_array)
+        return [estimated_total_cost, explanation]
