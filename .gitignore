@@ -4,3 +4,7 @@
 # Jetbrain IDE
 .idea/
 *.iml
+venv/
+.vscode
+Project2/venv
+Project2/__pycache__
