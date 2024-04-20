@@ -240,7 +240,7 @@ class CostEstimator:
 
         return [estimated_total_cost, explanation]
     
-    def merge_join_function_cost_estimation(self, node):
+    def merge_join_function_cost_function(self, node):
         explanation_array = ["Formula: total_cost = left_cost + right_cost"]
         left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
         left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
@@ -255,7 +255,7 @@ class CostEstimator:
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
     
-    def hash_join_function(self, node):
+    def hash_join_cost_function(self, node):
         explanation_array = ["Formula: total_cost = left_cost + right_cost"]
         left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
         left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
@@ -270,7 +270,7 @@ class CostEstimator:
         explanation = '\n'.join(explanation_array)
         return [estimated_total_cost, explanation]
     
-    def gather_function(self, node):
+    def gather_cost_function(self, node):
         explanation_array = ["Formula: total_cost = child_cost"]
         child_cost = node['Total Cost']
         explanation_array.append(f"child_cost = {child_cost}")
