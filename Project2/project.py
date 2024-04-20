@@ -1,6 +1,6 @@
 import psycopg2
 import logging
-from explain import run_explain, analyze_execution_plan, generate_report
+from explain import Explainer
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -50,16 +50,17 @@ def handle_query(query):
         return None
     try:
         logging.info("Running EXPLAIN on the provided query...")
-        explain_output = run_explain(query, conn)
-        analysis_results = analyze_execution_plan(explain_output)
-        display_results(analysis_results)  # For debugging purposes
+        explainer = Explainer(conn)
+        explain_output = explainer.run_explain(query)
+        analysis_results = explainer.analyze_execution_plan(explain_output)
+        display_results(analysis_results, explainer)  # For debugging purposes
         return analysis_results
     except Exception as e:
         logging.error(f"An error occurred while processing the query: {e}")
         return None
 
 
-def display_results(results):
+def display_results(results, explainer):
     """
     Displays the analysis results from the EXPLAIN command.
     For debugging purposes.
@@ -68,7 +69,7 @@ def display_results(results):
     results (dict): Results from the analysis of the EXPLAIN command.
     """
     if results:
-        report = generate_report(results)
+        report = explainer.generate_report(results)
         logging.info("Analysis Report:")
         logging.info(report)
     else:
