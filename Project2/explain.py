@@ -10,11 +10,9 @@ REFRESH_STATS_QUERY = """
 DO $$
 DECLARE
     table_name TEXT;
+    tables_to_analyze TEXT[] := ARRAY['lineitem', 'orders','customer','partsupp','supplier','part','nation','region'];
 BEGIN
-    FOR table_name IN
-        SELECT tablename
-        FROM pg_catalog.pg_tables
-        WHERE schemaname = 'public' -- Specify the schema if needed
+    FOREACH table_name IN ARRAY tables_to_analyze
     LOOP
         EXECUTE format('ANALYZE %I', table_name);
     END LOOP;
@@ -36,9 +34,10 @@ class Explainer:
     tableSet = {'lineitem', 'orders','customer','partsupp','supplier','part','nation','region'}
     properties = defaultdict(lambda: {})
 
-    def __init__(self, conn):
+    def __init__(self, conn, debug=False):
         self.conn = conn
         self.run(REFRESH_STATS_QUERY)
+        self.debug = debug
 
         result = self.run(SETTINGS_QUERY)
         for relname, random_page_cost, cpu_index_tuple_cost, cpu_operator_cost, cpu_tuple_cost, seq_page_cost, pages, tuples, visible_pages in result:
@@ -104,7 +103,7 @@ class Explainer:
         
         node['explanation'] = explanation
         node['estimated_cost'] = estimated_cost
-
+ 
         # Add cost of children
         if 'Plans' in node:
             for child in node['Plans']:
@@ -112,6 +111,11 @@ class Explainer:
                 node['estimated_cost'] += child_node['Total Cost']
         
         node['estimated_cost'] = round(node['estimated_cost'], 2)
+
+        if self.debug and abs(node['estimated_cost'] - node['Total Cost'])/node['Total Cost'] > 0.1:
+            print(node)
+            raise Exception(f"Estimated cost({node['estimated_cost']}) differs from Actual cost({node['Total Cost']}) significantly")
+        
         return node
 
 
