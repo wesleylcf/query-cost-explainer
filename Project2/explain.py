@@ -167,6 +167,8 @@ class CostEstimator:
         operator = node['Node Type']
         if operator == 'Seq Scan':
             return self.scan_cost_function(node)
+        if operator == 'Index Scan':
+            return self.index_scan_cost(node)
         if operator == 'Index Only Scan':
             return self.index_only_scan_cost_function(node)
         if operator == 'Materialize':
@@ -189,8 +191,10 @@ class CostEstimator:
             return self.limit_cost_function(node)
         if operator == 'Gather Merge':
             return self.gather_merge_cost_function(node)
-        else:
-            raise Exception(f"Cost function is undefined for operator {operator}")
+        # else:
+        #     raise Exception(f"Cost function is undefined for operator {operator}")
+        return [0, [f"Cost function is not implemented for operator: {operator}"]]
+
 
     def nested_loop_cost_function(self, node):
         """
@@ -206,22 +210,36 @@ class CostEstimator:
                 scan_node = child
         
         scan_rows, scan_cost = scan_node['Plan Rows'], scan_node['Total Cost']
-        explanation_array = [f"Explanation for {node['Node Type']}"]
-
+        # explanation_array = [f"Explanation for {node['Node Type']}"]
         consecutive_materialize_access_cost = (scan_rows-1) * self.MATERIALIZED_CONSECUTIVE_ACCESS_COST
-        materialize_cost = materialize_node['Total Cost'] + consecutive_materialize_access_cost
-        explanation_array.append(f"consecutive_materialize_access_cost = scans_row-1({scan_rows-1}) * MATERIALIZED_CONSECUTIVE_ACCESS_COST(0.0125)")
-        explanation_array.append(f"materialize_cost = initial_materialized_access_cost({materialize_node['Node Type']}) + consecutive_materialize_access_cost({consecutive_materialize_access_cost}) = {materialize_cost}")
+        if materialize_node:
+            materialize_cost = materialize_node['Total Cost'] + consecutive_materialize_access_cost
+            materialize_cost_str = f"Materialize Cost: {materialize_node['Node Type']} + {round(consecutive_materialize_access_cost, 2)} = {round(materialize_cost, 2)}"
+        else:
+            materialize_cost = 0
+            materialize_cost_str = "No Materialize Node"
+        # explanation_array.append(f"consecutive_materialize_access_cost = scans_row-1({scan_rows-1}) * MATERIALIZED_CONSECUTIVE_ACCESS_COST(0.0125)")
+        # explanation_array.append(f"materialize_cost = initial_materialized_access_cost({materialize_node['Node Type']}) + consecutive_materialize_access_cost({consecutive_materialize_access_cost}) = {materialize_cost}")
 
-        explanation_array.append(f"scan_cost = {scan_cost}")
+        # explanation_array.append(f"scan_cost = {scan_cost}")
 
         output_rows_cost = current_rows * self.properties['cpu_tuple_cost']
-        explanation_array.append(f"output_rows_cost = output rows({current_rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {output_rows_cost}")
+        # explanation_array.append(f"output_rows_cost = output rows({current_rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {output_rows_cost}")
 
         total_cost = materialize_cost + scan_cost + output_rows_cost
-        explanation_array.append(f"total_cost = materialize_cost({materialize_cost}) + scan_cost({scan_cost}) + output_rows_cost({output_rows_cost}) = {total_cost}")
+        # explanation_array.append(f"total_cost = materialize_cost({materialize_cost}) + scan_cost({scan_cost}) + output_rows_cost({output_rows_cost}) = {total_cost}")
         
-        return [output_rows_cost, '\n'.join(explanation_array)]
+        explanation_array = [
+        f"Explanation for {node['Node Type']}",
+        f"Consecutive Materialize Access Cost: {round(scan_rows-1, 2)} * {round(self.MATERIALIZED_CONSECUTIVE_ACCESS_COST, 2)} = {round(consecutive_materialize_access_cost, 2)}",
+        materialize_cost_str,
+        f"Scan Cost: {round(scan_cost, 2)}",
+        f"Output Rows Cost: {round(current_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows_cost, 2)}",
+        f"Total Cost: {round(materialize_cost, 2)} + {round(scan_cost, 2)} + {round(output_rows_cost, 2)} = {round(total_cost, 2)}"
+        ]
+
+        
+        return [output_rows_cost, explanation_array]
 
     def materialize_cost_function(self, node):
         rows = node['Plan Rows']
@@ -235,6 +253,18 @@ class CostEstimator:
         total_cost = (seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost'])
         explanation = f"Total cost = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
         return [total_cost, explanation]
+
+    def index_scan_cost(self, node):
+        total_cost = node['Total Cost']
+        scan_cost = node['Total Cost']
+        output_rows = node['Plan Rows']
+        explanation_array = [
+            f"Explanation for {node['Node Type']}",
+            f"Scan Cost: {round(scan_cost, 2)}",
+            f"Output Rows Cost: {round(output_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows * self.properties['cpu_tuple_cost'], 2)}",
+            f"Total Cost: {round(total_cost, 2)}"
+        ]
+        return [round(total_cost, 2), explanation_array]
 
     def index_only_scan_cost_function(self, node) -> float:
         explanation_array = ["Formula: total_cost = index_access_cost + table_pages_fetch_cost"]
@@ -270,37 +300,92 @@ class CostEstimator:
     def merge_join_function_cost_function(self, node):
         explanation_array = ["Formula: total_cost = left_cost + right_cost + sort_cost"]
         # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
-        left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
-        left_pages, right_pages = left_props['pages'], right_props['pages']
-        left_tups, right_tups = left_props['tuples'], right_props['tuples']
-        left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
-        right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
-        explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
-        explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
-        sort_cost = (left_tups + right_tups) * math.log(left_tups + right_tups) * self.properties['cpu_operator_cost']
-        explanation_array.append(f"sort_cost = (left_tups({left_tups}) + right_tups({right_tups})) * log(left_tups({left_tups}) + right_tups({right_tups})) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
-        estimated_total_cost = left_cost + right_cost + sort_cost
-        explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + sort_cost({sort_cost}) = {estimated_total_cost}")
-        explanation = '\n'.join(explanation_array)
-        return [estimated_total_cost, explanation]
+        # left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
     
+        left_props, right_props = None, None
+        for child in node['Plans']:
+            if child['Node Type'] == 'Sort':
+                for sub_child in child['Plans']:
+                    if 'Relation Name' in sub_child:
+                        left_props = self.properties[sub_child['Relation Name']]
+                        break
+            elif 'Relation Name' in child:
+                right_props = self.properties[child['Relation Name']]
+        if left_props and right_props:
+            left_pages, right_pages = left_props['pages'], right_props['pages']
+            left_tups, right_tups = left_props['tuples'], right_props['tuples']
+            left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
+            right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
+            explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
+            explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
+            sort_cost = (left_tups + right_tups) * math.log(left_tups + right_tups) * self.properties['cpu_operator_cost']
+            explanation_array.append(f"sort_cost = (left_tups({left_tups}) + right_tups({right_tups})) * log(left_tups({left_tups}) + right_tups({right_tups})) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
+            estimated_total_cost = left_cost + right_cost + sort_cost
+            explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + sort_cost({sort_cost}) = {estimated_total_cost}")
+            explanation = '\n'.join(explanation_array)
+            return [estimated_total_cost, explanation]
+        else:
+            return [0, "Error: Left or right properties not found."]
+    
+    # def hash_join_cost_function(self, node):
+    #     print("Node:", node)
+    #     explanation_array = ["Formula: total_cost = left_cost + right_cost + hash_cost"]
+    #     # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
+    #     left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
+
+    #     left_props = node['Plans'][0]['Relation Name']
+    #     right_props = node['Plans'][1]['Relation Name']
+    #     left_pages, right_pages = left_props['pages'], right_props['pages']
+    #     left_tups, right_tups = left_props['tuples'], right_props['tuples']
+    #     left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
+    #     right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
+    #     explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
+    #     explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
+    #     smaller_tups = min(left_tups, right_tups)
+    #     hash_cost = smaller_tups * self.properties['cpu_operator_cost']
+    #     explanation_array.append(f"hash_cost = smaller_tups({smaller_tups}) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {hash_cost}")
+    #     estimated_total_cost = left_cost + right_cost + hash_cost
+    #     explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + hash_cost({hash_cost}) = {estimated_total_cost}")
+    #     explanation = '\n'.join(explanation_array)
+    #     return [estimated_total_cost, explanation]
+
     def hash_join_cost_function(self, node):
-        explanation_array = ["Formula: total_cost = left_cost + right_cost + hash_cost"]
-        # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
-        left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
-        left_pages, right_pages = left_props['pages'], right_props['pages']
-        left_tups, right_tups = left_props['tuples'], right_props['tuples']
-        left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
-        right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
-        explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
-        explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
-        smaller_tups = min(left_tups, right_tups)
-        hash_cost = smaller_tups * self.properties['cpu_operator_cost']
-        explanation_array.append(f"hash_cost = smaller_tups({smaller_tups}) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {hash_cost}")
-        estimated_total_cost = left_cost + right_cost + hash_cost
-        explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + hash_cost({hash_cost}) = {estimated_total_cost}")
-        explanation = '\n'.join(explanation_array)
-        return [estimated_total_cost, explanation]
+        build_costs = []
+        probe_costs = []
+
+        for child in node['Plans']:
+            print(child)
+            build_relation = child
+            if 'Plans' in child:
+                probe_relation = child['Plans'][0]
+            else:
+                probe_relation = child
+
+            build_cost = build_relation['Total Cost']
+            build_rows = build_relation['Plan Rows']
+            build_size = build_rows * build_relation['Plan Width']
+            probe_cost = probe_relation['Total Cost']
+            probe_rows = probe_relation['Plan Rows']
+            probe_size = probe_rows * probe_relation['Plan Width']
+            build_hash_cost = build_cost
+            work_mem = 4000
+            probe_hash_cost = probe_cost * (build_size / work_mem)
+            
+            build_costs.append(build_hash_cost)
+            probe_costs.append(probe_hash_cost)
+
+        total_build_cost = sum(build_costs)
+        total_probe_cost = max(probe_costs)  # Probe phase uses the largest probe cost among all relations
+        total_cost = total_build_cost + total_probe_cost
+
+        explanation_array = [
+            f"Explanation for {node['Node Type']}",
+            f"Total Build Phase Cost: {round(total_build_cost, 2)}",
+            f"Total Probe Phase Cost: {round(total_probe_cost, 2)}",
+            f"Total Cost: {round(total_cost, 2)}"
+        ]
+        return [round(total_cost, 2), explanation_array]
+
     
     def unique_cost_function(self, node):
         explanation_array = ["Formula: total_cost = child_cost"]
