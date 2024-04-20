@@ -60,7 +60,7 @@ class Explainer:
         try:
             return cur.fetchall()
         except:
-            logging.warning("No rows fetched; Returning []")
+            logging.warning(f"No rows fetched for query {query}; Returning []")
             return []
 
     def run_explain(self, query):
@@ -100,27 +100,19 @@ class Explainer:
         Returns:
         dict: Node and sub-nodes analysis including both estimated and computed costs.
         """
-        # Extract estimated cost metrics provided by PostgreSQL
-        plan_properties = self.get_plan_properties(node)
         estimated_cost, explanation = self.cost_estimator.estimate(node)
+        
+        node['explanation'] = explanation
+        node['estimated_cost'] = estimated_cost
 
-        # Create a dictionary for this node's analysis that includes both sets of cost metrics
-        node_analysis = {
-            'Node Type': node.get('Node Type'),
-            'Relation Name': node.get('Relation Name', 'N/A'),
-            'Cost Analysis': {
-                'Actual Estimated Cost': node.get('Total Cost'),
-                'Estimated Cost': estimated_cost,
-                'Explanation': explanation
-            }
-        }
-
-        # Recursively analyze any sub-plans and include their analysis
+        # Add cost of children
         if 'Plans' in node:
-            sub_plans = [self.analyze_node(sub_node) for sub_node in node['Plans']]
-            node_analysis['Sub-plans'] = sub_plans
-
-        return node_analysis
+            for child in node['Plans']:
+                child_node = self.analyze_node(child)
+                node['estimated_cost'] += child_node['Total Cost']
+        
+        node['estimated_cost'] = round(node['estimated_cost'], 2)
+        return node
 
 
     def analyze_execution_plan(self, explain_output):
@@ -139,42 +131,6 @@ class Explainer:
         else:
             logging.error("No execution plan found.")
             return {}
-
-
-    def get_plan_properties(self, node):
-        """
-        Utility function to extract cost-related metrics from a node in the execution plan.
-        These metrics are cost estimates calculated by the PostgreSQL planner.
-
-        See 'JSON Format Explain Plan' section in:
-        https://www.postgresonline.com/journal/archives/171-Explain-Plans-PostgreSQL-9.0-Text,-JSON,-XML,-YAML-Part-1-You-Choose.html
-
-        Parameters:
-        node (dict): Node of the execution plan.
-
-        Returns:
-        dict: Extracted cost metrics.
-        """
-        props = {
-            'Node Type': node.get('Node Type'),
-            'Startup Cost': node.get('Startup Cost', 0.0),
-            'Total Cost': node.get('Total Cost', 0.0),
-            'Plan Rows': node.get('Plan Rows', 0),
-            'Plan Width': node.get('Plan Width', 0),
-            'Actual Startup Time': node.get('Actual Startup Time', 0.0),  # might not be useful for us
-            'Actual Total Time': node.get('Actual Total Time', 0.0),  # might not be useful for us
-            'Actual Rows': node.get('Actual Rows', 0),
-            'Actual Loops': node.get('Actual Loops', 1),
-            'Shared Hit Blocks': node.get('Shared Hit Blocks', 0),  # needed for scan formula
-            'Shared Read Blocks': node.get('Shared Read Blocks', 0),
-            'Shared Dirtied Blocks': node.get('Shared Dirtied Blocks', 0),
-            'Shared Written Blocks': node.get('Shared Written Blocks', 0),
-        }
-
-        return props
-
-
-    # TODO: Function to explain the computation of various cost in the QEP, explaining differences if any
 
     def generate_report(self, analysis_results):
         """
@@ -200,14 +156,49 @@ class CostEstimator:
             return self.scan_cost_function(node)
         if operator == 'Index Only Scan':
             return self.index_only_scan_cost_function(node)
+        if operator == 'Materialize':
+            return self.materialize_cost_function(node)
+        if operator == 'Nested Loop':
+            return self.nested_loop_cost_function(node)
         else:
             raise Exception(f"Cost function is undefined for operator {operator}")
+
+    def nested_loop_cost_function(self, node):
+        """
+            Assume that they define child plans as a stack(last one executed first)
+        """
+        materialize_node, scan_node = node['Plans']
+        current_rows = node['Plan Rows']
+        scan_rows, scan_cost = scan_node['Plan Rows'], scan_node['Total Cost']
+        explanation_array = [f"Explanation for {node['Node Type']}"]
+
+        # too complex; https://postgrespro.com/blog/pgsql/5969618
+        consecutive_materialize_access_cost = 1
+        materialize_cost = materialize_node['Total Cost'] * consecutive_materialize_access_cost
+        explanation_array.append(f"materialize_cost = Cost({materialize_node['Node Type']}) * materialize_access_cost(1) = {materialize_cost}")
+
+        explanation_array.append(f"scan_cost = {scan_cost}")
+
+        output_rows_cost = current_rows * self.properties['cpu_tuple_cost']
+        explanation_array.append(f"output_rows_cost = output rows({current_rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {output_rows_cost}")
+
+        total_cost = materialize_cost + scan_cost + output_rows_cost
+        explanation_array.append(f"total_cost = materialize_cost({materialize_cost}) + scan_cost({scan_cost}) + output_rows_cost({output_rows_cost}) = {total_cost}")
+        
+        return [output_rows_cost, '\n'.join(explanation_array)]
+
+    def materialize_cost_function(self, node):
+        rows = node['Plan Rows']
+        cpu_operator_cost = self.properties['cpu_operator_cost']
+        total_cost = 2 * cpu_operator_cost * rows
+        return [total_cost, f"Materialize cost = 2 * cpu_operator_cost({cpu_operator_cost}) * tuples({rows}) = {total_cost}"]
 
     def scan_cost_function(self, node):
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
         seq_pages_accessed = table_props['pages']
-        explanation = f"Cost function: (seq_pages_accessed * {self.properties['seq_page_cost']}) + (rows * {self.properties['cpu_tuple_cost']})\nwhere seq_pages_accessed= {seq_pages_accessed} and rows= {rows}"
-        return [(seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost']), explanation]
+        total_cost = (seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost'])
+        explanation = f"Total cos = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
+        return [total_cost, explanation]
 
     def index_only_scan_cost_function(self, node) -> float:
         explanation_array = ["Formula: total_cost = index_access_cost + table_pages_fetch_cost"]
