@@ -1,6 +1,7 @@
 
 import logging
 import json
+import math
 from collections import defaultdict
 
 # Set up logging configuration
@@ -491,3 +492,49 @@ class CostEstimator:
 
         return [total_cost, explanation]
 
+    def gather_merge_cost_function(self, node):
+
+        child_node = node['Plans'][0]
+        child_cost = child_node['Total Cost']
+
+        # Constants verified in documentation
+        parallel_setup_cost = 1000
+        parallel_tuple_cost = 0.1
+
+        # Initializing startup and running costs
+        startup_cost = 0
+        run_cost = 0
+
+        # Calculating the number of workers and logN
+        num_workers = node.get('Workers Launched', 0) + 1
+        logN = math.log2(num_workers)
+
+        # Setting the comparison cost
+        comparison_cost = 2.0 * self.properties['cpu_operator_cost']
+
+        # Calculating the heap creation cost
+        heap_creation_cost = comparison_cost * num_workers * logN
+        startup_cost += heap_creation_cost
+
+        # Calculating the per-tuple heap maintenance cost
+        run_cost += node['Plan Rows'] * comparison_cost * logN
+        run_cost += self.properties['cpu_operator_cost'] * node['Plan Rows']
+        heap_maintenance_cost = run_cost
+
+        # Adding parallel setup and communication costs
+        startup_cost += parallel_setup_cost
+        run_cost += parallel_tuple_cost * node['Plan Rows'] * 1.05
+
+        # Final cost calculations
+        total_startup_cost = startup_cost
+        total_cost = total_startup_cost + run_cost
+        total_cost_with_child = total_cost + child_cost
+
+        explanation = []
+        explanation.append("Formula: Total Cost = startup_cost + run_cost")
+        explanation.append(f"startup_cost = heap_creation_cost({heap_creation_cost}) + parallel_setup_cost({parallel_setup_cost}) = {total_startup_cost}")
+        explanation.append(f"run_cost = heap_maintenance_cost({heap_maintenance_cost}) + parallel_tuple_cost({parallel_tuple_cost}) * rows({node['Plan Rows']}) * 1.05 = {run_cost}")
+        explanation.append(f"Total Cost = startup_cost({total_startup_cost}) + run_cost({run_cost}) = {total_cost}")
+        explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
+
+        return [total_cost, explanation]
