@@ -89,7 +89,7 @@ class UI(QMainWindow):
             actual_cost = node['Total Cost']
             estimated_cost = node['estimated_cost']
             explanation = node['explanation']
-            return f"Node Type: {node_type}\nActual Cost: {actual_cost}\nEstimated Cost: {estimated_cost}\nExplanation: {explanation}"
+            return f"Node Type: {node_type}\n\nActual Cost: {actual_cost}\n\nEstimated Cost: {estimated_cost}\n\nExplanation:\n{explanation}"
 
     def setTreeData(self, root):
         model = QStandardItemModel()

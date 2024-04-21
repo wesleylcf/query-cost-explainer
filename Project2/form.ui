@@ -54,7 +54,7 @@
         <item>
         <widget class="QLabel" name="treeLabel">
           <property name="text">
-          <string>Query Tree with Costs</string>
+          <string>Query Tree(Click on node to see cost estimation)</string>
           </property>
         </widget>
         </item>

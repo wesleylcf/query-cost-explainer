@@ -218,7 +218,7 @@ class CostEstimator:
         consecutive_materialize_access_cost = (scan_rows-1) * self.MATERIALIZED_CONSECUTIVE_ACCESS_COST
         if materialize_node:
             materialize_cost = materialize_node['Total Cost'] + consecutive_materialize_access_cost
-            materialize_cost_str = f"Materialize Cost: Materialization Cost + Consecutive Materialize Access Cost({round(consecutive_materialize_access_cost, 2)}) = {round(materialize_cost, 2)}"
+            materialize_cost_str = f"Materialize Cost: Materialization Cost + Total Consecutive Materialize Access Cost({consecutive_materialize_access_cost}) = {round(materialize_cost, 2)}"
         else:
             materialize_cost = 0
             materialize_cost_str = "No Materialize Node"
@@ -234,78 +234,71 @@ class CostEstimator:
         # explanation_array.append(f"total_cost = materialize_cost({materialize_cost}) + scan_cost({scan_cost}) + output_rows_cost({output_rows_cost}) = {total_cost}")
         
         explanation_array = [
-        f"Explanation for {node['Node Type']}",
-        f"Consecutive Materialize Access Cost = (Scanned rows - 1)({scan_rows-1}) * Con({round(self.MATERIALIZED_CONSECUTIVE_ACCESS_COST, 2)}) = {round(consecutive_materialize_access_cost, 2)}",
-        materialize_cost_str,
-        f"Scan Cost = {round(scan_cost, 2)}",
-        f"Output Rows Cost = {round(current_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows_cost, 2)}",
-        f"Total Cost: Materialize Cost({round(materialize_cost, 2)}) + Scan Cost({round(scan_cost, 2)}) + Output Rows Cost({output_rows_cost}) = {round(total_cost, 2)}"
+            f"Total Consecutive Materialize Access Cost = (Scanned rows({scan_rows}) - 1) * Consecutive Materialize Access Cost({self.MATERIALIZED_CONSECUTIVE_ACCESS_COST}) = {round(consecutive_materialize_access_cost, 2)}",
+            materialize_cost_str,
+            f"Scan Cost = {round(scan_cost, 2)}",
+            f"Output Rows Cost = {round(current_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows_cost, 2)}",
+            f"Total Cost: Materialize Cost({round(materialize_cost, 2)}) + Scan Cost({round(scan_cost, 2)}) + Output Rows Cost({output_rows_cost}) = {round(total_cost, 2)}"
         ]
 
-        
-        return [output_rows_cost, '\n'.join(explanation_array)]
+        return self.toResponse(output_rows_cost, explanation_array)
 
     def materialize_cost_function(self, node):
         rows = node['Plan Rows']
         cpu_operator_cost = self.properties['cpu_operator_cost']
         children_cost = self.getChildrenCost(node)
         cost = 2 * cpu_operator_cost * rows
-        explanation_array = [f"Materialize Cost = 2 * cpu_operator_cost({cpu_operator_cost}) * tuples({rows}) = {cost}"]
+        explanation_array = [f"Materialize Cost = 2 * CPU Operator Cost({cpu_operator_cost}) * Tuples({rows}) = {round(cost, 2)}"]
         explanation_array.append(f"Total Cost = Cost of children({children_cost}) + Materialize Cost({cost}) = {round(cost + children_cost, 2)}")
-        return [cost, '\n'.join(explanation_array)]
+        return self.toResponse(cost, explanation_array)
 
     def scan_cost_function(self, node):
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
         seq_pages_accessed = table_props['pages']
         total_cost = (seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost'])
-        explanation = (
-            f"Total cost = seq_pages_accessed({seq_pages_accessed}) * seq_page_cost({self.properties['seq_page_cost']}) + "
-            f"rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {total_cost}"
-        )        
-        return [total_cost, explanation]
+        explanation_array = [f"Total cost = Sequential Pages Accessed({seq_pages_accessed}) * Sequential Page Cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {round(total_cost,2)}"]
+        return self.toResponse(total_cost, explanation_array)
 
     def index_scan_cost(self, node):
         total_cost = node['Total Cost']
         scan_cost = node['Total Cost']
         output_rows = node['Plan Rows']
         explanation_array = [
-            f"Explanation for {node['Node Type']}",
             f"Scan Cost: {round(scan_cost, 2)}",
             f"Output Rows Cost: {round(output_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows * self.properties['cpu_tuple_cost'], 2)}",
             f"Total Cost: {round(total_cost, 2)}"
         ]
-        return [round(total_cost, 2), explanation_array]
+        return self.toResponse(total_cost, explanation_array)
 
     def index_only_scan_cost_function(self, node) -> float:
-        explanation_array = ["Formula: total_cost = index_access_cost + table_pages_fetch_cost"]
+        explanation_array = ["Formula: Total Cost = Index Access Cost + Table Pages Fetch Cost"]
         relation_name, rows = node['Relation Name'], node['Plan Rows']
         relation_pages, relation_tuples =  self.properties[relation_name]['pages'], self.properties[relation_name]['tuples']
 
         index_selectivity = rows/relation_tuples
-        explanation_array.append("Calculation for index_access_cost:")
-        explanation_array.append(f"index_selectivity = estimated_rows({rows}) / total_rows({relation_tuples}) = {index_selectivity}")
+        explanation_array.append("Calculation for Index Access Cost:")
+        explanation_array.append(f"Index Selectivity = estimated_rows({rows}) / Total Rows({relation_tuples}) = {round(index_selectivity, 2)}")
 
         estimated_pages, estimated_tuples = relation_pages * index_selectivity, relation_tuples * index_selectivity
-        explanation_array.append(f"estimated_pages = selectivity({index_selectivity}) * total pages({relation_pages}) = {estimated_pages}")
-        explanation_array.append(f"estimated_tuples = selectivity({index_selectivity}) * total tuples({relation_tuples}) = {estimated_tuples}")
+        explanation_array.append(f"Estimated Pages = Index Selectivity({index_selectivity}) * Total Pages({relation_pages}) = {round(estimated_pages, 2)}")
+        explanation_array.append(f"Estimated Tuples = Index Selectivity({index_selectivity}) * Total Tuples({relation_tuples}) = {round(estimated_tuples, 2)}")
 
         estimated_index_pages = self.properties[node['Index Name']]['pages']
         random_page_cost, cpu_index_tuple_cost, cpu_operator_cost, cpu_tuple_cost, seq_page_cost = self.properties['random_page_cost'], self.properties['cpu_index_tuple_cost'], self.properties['cpu_operator_cost'], self.properties['cpu_tuple_cost'], self.properties['seq_page_cost']
-        explanation_array.append(f"From DB: random_page_cost={random_page_cost} cpu_index_tuple_cost={cpu_index_tuple_cost} cpu_operator_cost={cpu_operator_cost} cpu_tuple_cost={cpu_tuple_cost} seq_page_cost={seq_page_cost}")
+        explanation_array.append(f"From DB: Random Page Cost={random_page_cost} CPU Index Tuple Cost={cpu_index_tuple_cost} CPU Operator Cost={cpu_operator_cost} CPU Tuple Cost={cpu_tuple_cost} Sequential Page Cost={seq_page_cost}")
         estimated_index_cost = estimated_index_pages * random_page_cost + estimated_tuples * (cpu_index_tuple_cost + cpu_operator_cost)
-        explanation_array.append(f"index_access_cost = estimated_index_pages({estimated_pages}) * random_page_cost({random_page_cost}) + estimated_tuples({estimated_tuples}) * (cpu_index_tuple_cost({cpu_index_tuple_cost}) + cpu_operator_cost({cpu_operator_cost})) = {estimated_index_cost}")
+        explanation_array.append(f"Index Access Cost = Estimated Pages({estimated_pages}) * Random Page Cost({random_page_cost}) + Estimated Tuples({estimated_tuples}) * (CPU Index Tuple Cost({cpu_index_tuple_cost}) + CPU Operator Cost({cpu_operator_cost})) = {round(estimated_index_cost,2)}")
         
-        explanation_array.append("Calculation for index_access_cost:")
+        explanation_array.append("Calculation for Table Pages Fetch Cost:")
         frac_visible = self.properties[relation_name]['visible_pages']/relation_pages
-        explanation_array.append(f"fraction_pages_visible = relallvisible({self.properties[relation_name]['visible_pages']}) / total_pages({relation_pages}) = {frac_visible}")
+        explanation_array.append(f"Fraction Of Visible Pages = relallvisible({self.properties[relation_name]['visible_pages']}) / Total Pages({relation_pages}) = {round(frac_visible)}")
         estimated_table_cost = (1-frac_visible) * estimated_pages * seq_page_cost + estimated_tuples * cpu_tuple_cost
-        explanation_array.append(f"table_pages_fetch_cost = (1-frac_visible={frac_visible}) * estimated_pages({estimated_pages}) * seq_page_cost({seq_page_cost}) + estimated_tuples({estimated_tuples}) * cpu_tuple_cost({cpu_tuple_cost})")
+        explanation_array.append(f"Table Pages Fetch Cost = (1-frac_visible={frac_visible}) * Estimated Pages({estimated_pages}) * Sequential Page Cost({seq_page_cost}) + Estimated Tuples({estimated_tuples}) * CPU Tuple Cost({cpu_tuple_cost})")
 
         estimated_total_cost = estimated_index_cost + estimated_table_cost
-        explanation_array.append(f"Therefore total cost = index_access_cost({estimated_index_cost}) + table_pages_fetch_cost({estimated_table_cost}) = {estimated_total_cost}")
-        explanation = '\n'.join(explanation_array)
+        explanation_array.append(f"Therefore Total Cost = Index Access Cost({estimated_index_cost}) + Table Pages Fetch Cost({estimated_table_cost}) = {round(estimated_total_cost,2)}")
 
-        return [estimated_total_cost, explanation]
+        return self.toResponse(estimated_total_cost, explanation_array)
     
     def merge_join_function_cost_function(self, node):
         explanation_array = ["Formula: total_cost = left_cost + right_cost + sort_cost"]
@@ -560,4 +553,8 @@ class CostEstimator:
             return 0
 
         return sum([child['Total Cost'] for child in node['Plans']])
+    
+    def toResponse(self, cost, explanation_array) -> [float, str]:
+        explanation_array = [f"{index+1}. {line}" for index, line in enumerate(explanation_array)]
+        return [round(cost,2), '\n'.join(explanation_array)]
         
