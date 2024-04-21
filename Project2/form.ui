@@ -25,7 +25,10 @@
         </widget>
         </item>
         <item>
-        <widget class="QTextEdit" name="inputText"/>
+          <widget class="QTextEdit" name="inputText"/>
+        </item>
+        <item>
+          <widget class ="QLabel" name="error" />
         </item>
         <item>
           <layout class="QHBoxLayout" name="horizontalLayout">

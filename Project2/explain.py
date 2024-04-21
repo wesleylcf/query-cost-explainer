@@ -92,8 +92,7 @@ class Explainer:
             logging.error("An error occurred while executing the EXPLAIN command", e)
             # Rollback any ongoing transactions
             self.conn.rollback()
-            # Handle the error gracefully, you may choose to return None or raise a custom exception
-            raise MyCustomException("An error occurred while executing the EXPLAIN command. Please check your input.")
+            raise Exception("An error occurred while executing the query. Please check your input.")
 
     def analyze_node(self, node):
         """
