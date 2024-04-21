@@ -325,10 +325,9 @@ class CostEstimator:
             explanation_array.append(f"sort_cost = (left_tups({left_tups}) + right_tups({right_tups})) * log(left_tups({left_tups}) + right_tups({right_tups})) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
             estimated_total_cost = round(left_cost + right_cost + sort_cost,2)
             explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + sort_cost({sort_cost}) = {estimated_total_cost}")
-            explanation = '\n'.join(explanation_array)
-            return [round(estimated_total_cost, 2), explanation]
+            return self.toResponse(round(estimated_total_cost,2), explanation_array)
         else:
-            return [0, "Error: Left or right properties not found."]
+            return self.toResponse(0, ["Error: Left or right properties not found."])
     
     # def hash_join_cost_function(self, node):
     #     print("Node:", node)
@@ -385,7 +384,7 @@ class CostEstimator:
             f"Total Probe Phase Cost: {round(total_probe_cost, 2)}",
             f"Total Cost: {round(total_cost, 2)}"
         ]
-        return [round(total_cost, 2), explanation_array]
+        return self.toResponse(round(total_cost,2), explanation_array)
 
     
     def unique_cost_function(self, node):
@@ -394,8 +393,7 @@ class CostEstimator:
         explanation_array.append(f"child_cost = {round(child_cost,2)}")
         estimated_total_cost = child_cost
         explanation_array.append(f"Therefore total cost = child_cost({child_cost}) = {estimated_total_cost}")
-        explanation = '\n'.join(explanation_array)
-        return [round(estimated_total_cost, 2), explanation]
+        return self.toResponse(round(estimated_total_cost,2), explanation_array)
     
     def sort_cost_function(self, node):
         input_rows = node['Plan Rows']
@@ -407,7 +405,8 @@ class CostEstimator:
         total_cost = round(sort_cost + node['Total Cost'], 2)
 
         explanation = f"Total Sort cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
-        return [total_cost, explanation]\
+        # return [total_cost, explanation]\
+        return self.toResponse(total_cost, explanation)
 
 
     def aggregate_cost_function(self, node):
@@ -429,7 +428,8 @@ class CostEstimator:
         explanation.append("Note:")
         explanation.append("The actual cost may vary due to parallel execution efficiencies and other runtime factors not accounted for in this formula.")
 
-        return [total_cost, explanation]
+        # return [total_cost, explanation]
+        return self.toResponse(total_cost, explanation)
 
     def gather_cost_function(self, node):
         child_node = node['Plans'][0]
@@ -461,7 +461,8 @@ class CostEstimator:
         explanation.append("Note:")
         explanation.append("Gather cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
 
-        return [total_cost, explanation]
+        # return [total_cost, explanation]
+        return self.toResponse(total_cost, explanation)
 
     def limit_cost_function(self, node):
         # See StackOverflow: https://stackoverflow.com/questions/75522000/why-postgresql-explain-cost-is-low-in-limit-and-result-phase-but-high-in-index-s
@@ -497,7 +498,8 @@ class CostEstimator:
         explanation.append("=> This formula is a simplified version and may not cover all edge cases accurately, however, it is accurate for scan type children nodes.")
         explanation.append("In PostgreSQL, LIMIT does not have a dedicated cost function but adjusts the expected number of output rows, affecting cost indirectly.")
 
-        return [total_cost, explanation]
+        # return [total_cost, explanation]
+        return self.toResponse(total_cost, explanation)
 
     def gather_merge_cost_function(self, node):
 
@@ -546,7 +548,8 @@ class CostEstimator:
         explanation.append("Note:")
         explanation.append("Gather Merge cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
 
-        return [total_cost, explanation]
+        # return [total_cost, explanation]
+        return self.toResponse(total_cost, explanation)
 
     def getChildrenCost(self, node):
         if 'Plans' not in node:
