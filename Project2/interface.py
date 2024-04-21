@@ -69,15 +69,14 @@ class UI(QMainWindow):
     
     def setInput(self, text):
         self.query_input.setPlainText(text)
-        self.input_sql.setPlainText(text)
 
     def clear(self):
-        self.input_sql.setPlainText("")
+        self.query_input.setPlainText("")
         self.label_qep.setText("")
         self.setError("")
 
     def onQueryChange(self, callback):
-        self.input_sql.textChanged.connect(callback)
+        self.query_input.textChanged.connect(callback)
     
     # callback setter
     def setOnAnalyseClicked(self, callback):
