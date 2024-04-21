@@ -197,6 +197,8 @@ class CostEstimator:
             return self.limit_cost_function(node)
         if operator == 'Gather Merge':
             return self.gather_merge_cost_function(node)
+        if operator == 'Hash':
+            return self.hash_cost_function(node)
         # else:
         #     raise Exception(f"Cost function is undefined for operator {operator}")
         return [0, [f"Cost function is not implemented for operator: {operator}"]]
@@ -256,7 +258,7 @@ class CostEstimator:
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
         seq_pages_accessed = table_props['pages']
         total_cost = (seq_pages_accessed * self.properties['seq_page_cost']) + (rows * self.properties['cpu_tuple_cost'])
-        explanation_array = [f"Total cost = Sequential Pages Accessed({seq_pages_accessed}) * Sequential Page Cost({self.properties['seq_page_cost']}) + rows({rows}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']}) = {round(total_cost,2)}"]
+        explanation_array = [f"Total cost = Sequential Pages Accessed({seq_pages_accessed}) * Sequential Page Cost({self.properties['seq_page_cost']}) + rows({rows}) * CPU Tuple Cost({self.properties['cpu_tuple_cost']}) = {round(total_cost,2)}"]
         return self.toResponse(total_cost, explanation_array)
 
     def index_scan_cost(self, node):
@@ -352,9 +354,24 @@ class CostEstimator:
     #     explanation = '\n'.join(explanation_array)
     #     return [estimated_total_cost, explanation]
 
+    def hash_cost_function(self, node):
+        input_rows = node['Plan Rows']
+        cpu_operator_cost = self.properties['cpu_operator_cost']
+        explanation_array = ["Formula: Hash Cost = CPU Operator Cost * Input Rows"]
+        hash_cost = round(cpu_operator_cost * input_rows,2)
+        children_cost = self.getChildrenCost(node)
+
+        total_cost = round(hash_cost + children_cost, 2)
+        explanation_array.append(f"Hash Cost = CPU Operator Cost({cpu_operator_cost:.2f}) * Input Rows({input_rows})")
+        explanation_array.append(f"Total Cost = Hash Cost({hash_cost:.2f}) + Children Cost({children_cost:.2f}) = {total_cost}")
+
+        return self.toResponse(hash_cost, explanation_array)
+
     def hash_join_cost_function(self, node):
-        build_costs = []
-        probe_costs = []
+        total_hash_cost = 0
+        cpu_operator_cost = self.properties['cpu_operator_cost']
+
+        explanation_array = ["Formula: Hash Join Cost = Build Cost + Probe Cost + Hash Cost"]
 
         for child in node['Plans']:
             build_relation = child
@@ -363,29 +380,29 @@ class CostEstimator:
             else:
                 probe_relation = child
 
-            build_cost = build_relation['Total Cost']
+            disk_cost_per_page = self.properties['seq_page_cost']
+            build_pages = build_relation['Plan Rows'] / build_relation['Plan Width']
+            probe_pages = probe_relation['Plan Rows'] / probe_relation['Plan Width']
+
             build_rows = build_relation['Plan Rows']
             build_size = build_rows * build_relation['Plan Width']
-            probe_cost = probe_relation['Total Cost']
             probe_rows = probe_relation['Plan Rows']
             probe_size = probe_rows * probe_relation['Plan Width']
-            build_hash_cost = build_cost
-            work_mem = 4000
-            probe_hash_cost = probe_cost * (build_size / work_mem)
+
+            smaller_relation = min(build_rows, probe_rows)
             
-            build_costs.append(build_hash_cost)
-            probe_costs.append(probe_hash_cost)
+            hash_cost = smaller_relation * cpu_operator_cost
+            explanation_array.append(f"Hash Table Cost = Smaller Relation({smaller_relation}) * CPU Operator Cost({cpu_operator_cost})")
+            hash_join_cost = hash_cost + max(build_rows, probe_rows) * cpu_operator_cost + smaller_relation * cpu_operator_cost
+            total_hash_cost += hash_join_cost
+            explanation_array.append(f"Hash Join Cost = Build Rows({build_relation['Plan Rows']}) * CPU Operator Cost({cpu_operator_cost}) + Probe Rows({probe_relation['Plan Rows']}) * CPU Operator Cost({cpu_operator_cost}) + Hash Table Cost({hash_join_cost:.2f})")
+            break
+        
+        children_cost = self.getChildrenCost(node)
+        total_cost = round(total_hash_cost+children_cost,2)
+        explanation_array.append(f"Total Cost = Hash Join Cost({total_hash_cost:.2f}) + Children Cost({children_cost:.2f}) = {total_cost}")
 
-        total_build_cost = sum(build_costs)
-        total_probe_cost = max(probe_costs)  # Probe phase uses the largest probe cost among all relations
-        total_cost = total_build_cost + total_probe_cost
-
-        explanation_array = [
-            f"Total Build Phase Cost: {round(total_build_cost, 2)}",
-            f"Total Probe Phase Cost: {round(total_probe_cost, 2)}",
-            f"Total Cost: {round(total_cost, 2)}"
-        ]
-        return self.toResponse(round(total_cost,2), explanation_array)
+        return self.toResponse(round(total_hash_cost,2), explanation_array)
 
     
     def unique_cost_function(self, node):
@@ -401,13 +418,21 @@ class CostEstimator:
         cpu_operator_cost = self.properties['cpu_operator_cost']
         disk_cost_per_page = self.properties['seq_page_cost']
         pages = node['Plan Rows'] / node['Plan Width']
+        explanation_array = ["Formula: 2 * CPU Operator Cost * Input Rows * log2(Input Rows) + Disk Cost per Page * Pages"]
+        sort_cost = 2 * cpu_operator_cost * input_rows * math.log2(input_rows) + disk_cost_per_page * pages
 
-        sort_cost = input_rows * (cpu_operator_cost + (disk_cost_per_page * pages))
-        total_cost = round(sort_cost + node['Total Cost'], 2)
+        children_cost = self.getChildrenCost(node)
 
-        explanation = f"Total Sort cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
+        total_cost = round(sort_cost+children_cost,2)
+        # explanation_array.append(f"Sort Cost = 2 * CPU Operator Cost({round({cpu_operator_cost})}) * {input_rows} * log2({input_rows}) + {disk_cost_per_page} * {pages}")
+        explanation_array.append(f"Sort Cost = 2 * CPU Operator Cost({cpu_operator_cost:.2f}) * Input Rows({input_rows}) * log2(Input Rows({input_rows})) + Disk Cost per Page({disk_cost_per_page:.2f}) * Pages({pages:.2f})",)
+        explanation_array.append(f"Total Cost = Sort Cost({sort_cost:.2f}) + Children Cost({children_cost:.2f}) = {total_cost}")
 
-        return self.toResponse(total_cost, explanation)
+        #  sort_cost = input_rows * (cpu_operator_cost + (disk_cost_per_page * pages))
+        # total_cost = round(sort_cost + node['Total Cost'], 2)
+        # explanation = f"Total Sort cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
+
+        return self.toResponse(sort_cost, explanation_array)
 
 
     def aggregate_cost_function(self, node):
