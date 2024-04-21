@@ -11,9 +11,6 @@ class UI(QMainWindow):
         super(UI, self).__init__()
         
         uic.loadUi("login.ui", self)
-        # self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
-        # self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
-
         self.state = { 'qep': None, 'tree': {} }
 
         # Widgets 
@@ -74,7 +71,7 @@ class UI(QMainWindow):
 
     def clear(self):
         self.query_input.setPlainText("")
-        self.label_qep.setText("")
+        self.cost_view.setText("")
         self.setError("")
 
     def onQueryChange(self, callback):

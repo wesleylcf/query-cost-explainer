@@ -199,8 +199,6 @@ class CostEstimator:
             return self.gather_merge_cost_function(node)
         if operator == 'Hash':
             return self.hash_cost_function(node)
-        # else:
-        #     raise Exception(f"Cost function is undefined for operator {operator}")
         return [0, [f"Cost function is not implemented for operator: {operator}"]]
 
 
@@ -304,10 +302,7 @@ class CostEstimator:
         return self.toResponse(estimated_total_cost, explanation_array)
     
     def merge_join_function_cost_function(self, node):
-        explanation_array = ["Formula: total_cost = left_cost + right_cost + sort_cost"]
-        # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
-        # left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
-    
+        explanation_array = ["Formula: Total Cost = Left cost + Right Cost + Sort Cost"]
         left_props, right_props = None, None
         for child in node['Plans']:
             if child['Node Type'] == 'Sort':
@@ -322,37 +317,15 @@ class CostEstimator:
             left_tups, right_tups = round(left_props['tuples'],2), round(right_props['tuples'],2)
             left_cost = round((left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost']),2)
             right_cost = round((right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost']),2)
-            explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
-            explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
+            explanation_array.append(f"Left Cost = (Left Pages({left_pages}) * Seq Page Cost({self.properties['seq_page_cost']})) + (Left tups({left_tups}) * CPU Tuple Cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
+            explanation_array.append(f"Right Cost = (Right Pages({right_pages}) * Seq Page Cost({self.properties['seq_page_cost']})) + (Right Tups({right_tups}) * CPU Tuple Cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
             sort_cost = round((left_tups + right_tups) * math.log(left_tups + right_tups) * self.properties['cpu_operator_cost'],2)
-            explanation_array.append(f"sort_cost = (left_tups({left_tups}) + right_tups({right_tups})) * log(left_tups({left_tups}) + right_tups({right_tups})) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
+            explanation_array.append(f"Sort Cost = (Left tups({left_tups}) + Right Tups({right_tups})) * log(Left tups({left_tups}) + Right Tups({right_tups})) * CPU Operator Cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
             estimated_total_cost = round(left_cost + right_cost + sort_cost,2)
-            explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + sort_cost({sort_cost}) = {estimated_total_cost}")
+            explanation_array.append(f"Total cost = Left Cost({left_cost}) + Right Cost({right_cost}) + Sort Cost({sort_cost}) = {estimated_total_cost}")
             return self.toResponse(round(estimated_total_cost,2), explanation_array)
         else:
             return self.toResponse(0, ["Error: Left or right properties not found."])
-    
-    # def hash_join_cost_function(self, node):
-    #     print("Node:", node)
-    #     explanation_array = ["Formula: total_cost = left_cost + right_cost + hash_cost"]
-    #     # left_rows, right_rows = node['Plan Rows'], node['Plan Rows']
-    #     left_props, right_props = self.properties[node['Relation Name']], self.properties[node['Relation Name']]
-
-    #     left_props = node['Plans'][0]['Relation Name']
-    #     right_props = node['Plans'][1]['Relation Name']
-    #     left_pages, right_pages = left_props['pages'], right_props['pages']
-    #     left_tups, right_tups = left_props['tuples'], right_props['tuples']
-    #     left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
-    #     right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
-    #     explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
-    #     explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
-    #     smaller_tups = min(left_tups, right_tups)
-    #     hash_cost = smaller_tups * self.properties['cpu_operator_cost']
-    #     explanation_array.append(f"hash_cost = smaller_tups({smaller_tups}) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {hash_cost}")
-    #     estimated_total_cost = left_cost + right_cost + hash_cost
-    #     explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + hash_cost({hash_cost}) = {estimated_total_cost}")
-    #     explanation = '\n'.join(explanation_array)
-    #     return [estimated_total_cost, explanation]
 
     def hash_cost_function(self, node):
         input_rows = node['Plan Rows']
@@ -424,14 +397,8 @@ class CostEstimator:
         children_cost = self.getChildrenCost(node)
 
         total_cost = round(sort_cost+children_cost,2)
-        # explanation_array.append(f"Sort Cost = 2 * CPU Operator Cost({round({cpu_operator_cost})}) * {input_rows} * log2({input_rows}) + {disk_cost_per_page} * {pages}")
         explanation_array.append(f"Sort Cost = 2 * CPU Operator Cost({cpu_operator_cost:.2f}) * Input Rows({input_rows}) * log2(Input Rows({input_rows})) + Disk Cost per Page({disk_cost_per_page:.2f}) * Pages({pages:.2f})",)
         explanation_array.append(f"Total Cost = Sort Cost({sort_cost:.2f}) + Children Cost({children_cost:.2f}) = {total_cost}")
-
-        #  sort_cost = input_rows * (cpu_operator_cost + (disk_cost_per_page * pages))
-        # total_cost = round(sort_cost + node['Total Cost'], 2)
-        # explanation = f"Total Sort cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
-
         return self.toResponse(sort_cost, explanation_array)
 
 
