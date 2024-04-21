@@ -1,5 +1,5 @@
 from PyQt5 import uic
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import QTime, pyqtSignal
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 import logging
@@ -9,55 +9,89 @@ class UI(QMainWindow):
     error_text_signal = pyqtSignal(str)
     def __init__(self):
         super(UI, self).__init__()
-        uic.loadUi("form.ui", self)
-        self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
-        self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
+        
+        uic.loadUi("login.ui", self)
+        # self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
+        # self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
 
-        self.input_sql = self.findChild(QTextEdit, "inputText")
-        self.label_qep = self.findChild(QTextBrowser, "textBrowser")
-        self.btn_analyse = self.findChild(QPushButton, "estimateBtn")
-        self.btn_clear = self.findChild(QPushButton, "clearBtn")
+        self.state = { 'qep': None, 'tree': {} }
+
+        # Widgets 
+        self.query_input = self.findChild(QTextEdit, "inputText")
+        self.cost_view = self.findChild(QTextBrowser, "costView")
+        self.estimate_btn = self.findChild(QPushButton, "estimateBtn")
+        self.clear_btn = self.findChild(QPushButton, "clearBtn")
+        self.tree_view = self.findChild(QTreeView, "treeView")
+
+        # Login 
+        self.connect_btn = self.findChild(QPushButton, "connectBtn")
+        self.disconnect_btn = self.findChild(QPushButton, "disconnectBtn")
+        self.name_input = self.findChild(QLineEdit, "nameInput")
+        self.user_input = self.findChild(QLineEdit, "userInput")
+        self.pw_input = self.findChild(QLineEdit, "pwInput")
+        self.host_input = self.findChild(QLineEdit, "hostInput")
+        self.port_input = self.findChild(QLineEdit, "portInput")
+        self.status_box = self.findChild(QGroupBox, "statusBox")
+        self.status_text = self.findChild(QLabel, "statusLabel")
+        self.status_text.setText("Disconnected")
+         
         self.error_text = self.findChild(QLabel, "error")
         self.error_text.setStyleSheet("color: red")
         self.error_text.setWordWrap(True)
-
-        self.tree_view = self.findChild(QTreeView, "treeView")
-
         
-        self.btn_clear.clicked.connect(self.clear)
+        # Button Actions
+        self.connect_btn.clicked.connect(self.connect_database)
+        self.clear_btn.clicked.connect(self.clear)
         self.tree_view.clicked.connect(self.on_tree_item_clicked)
         self.error_text_signal.connect(self.error_text.setText)
 
-    def readInput(self):
-        return self.input_sql.toPlainText()
-    
-    def setInput(self, text):
-        self.input_sql.setPlainText(text)
+
+    def connect_database(self):
+        name = self.name_input.text()
+        user = self.user_input.text()
+        password = self.pw_input.text()
+        host = self.host_input.text()
+        port = self.port_input.text()
+        return name, user, password, host, port
+
+    def set_status(self, connected):
+        current_time = QTime.currentTime().toString()
+        if (connected):
+            self.status_text.setText(f"Connected Successfully @ {current_time}")
+        else:
+            self.status_text.setText("Disconnected")
 
     def clear(self):
-        self.input_sql.setPlainText("")
+        self.query_input.setPlainText("")
+        self.cost_view.setText("")
+    def readInput(self):
+        return self.query_input.toPlainText()
+    
+    def setInput(self, text):
+        self.query_input.setPlainText(text)
+
+    def clear(self):
+        self.query_input.setPlainText("")
         self.label_qep.setText("")
         self.setError("")
 
     def onQueryChange(self, callback):
-        self.input_sql.textChanged.connect(callback)
+        self.query_input.textChanged.connect(callback)
     
     # callback setter
     def setOnAnalyseClicked(self, callback):
         self.setError("")
         if callback:
-            self.btn_analyse.clicked.connect(callback)
+            self.estimate_btn.clicked.connect(callback)
         
     def setOnDatabaseChanged(self, callback):
         self.cb_db_changed = callback
 
-    # private events handling 
     def _onDatabaseChanged(self, cur_index):
         if hasattr(self, "cb_db_changed"):
             self.cb_db_changed()
         
     def _onSchemaItemDoubleClicked(self, item, col):
-        # append item text to input text area
         self.setInput( f"{self.readInput()} {item.text(col)} ") 
 
     def on_tree_item_clicked(self, index):
@@ -65,7 +99,7 @@ class UI(QMainWindow):
         item = model.itemFromIndex(index)
         if item is not None:
             node = item.data()
-            self.label_qep.setText(self.node_to_string(node))
+            self.cost_view.setText(self.node_to_string(node))
     
     def node_to_string(self, node):
             node_type = node['Node Type']

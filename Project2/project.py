@@ -17,7 +17,10 @@ class Application:
         self.window.onQueryChange(self.resetError)
         self.conn = None
         self.explainer = None
-        self.connect()
+        self.connected = False
+        self.window.connect_btn.clicked.connect(self.connect)
+        self.window.disconnect_btn.clicked.connect(self.close_connection)
+
     
     def resetError(self):
         self.window.setError("")
@@ -43,21 +46,39 @@ class Application:
                 self.window.setError(str(e))
 
     def connect(self):
-        try:
-            self.conn = psycopg2.connect(
-                dbname="TPC-H",
-                user="postgres",
-                password="password",
-                host="localhost",
-                port="5432"
-            )
-            self.explainer = Explainer(self.conn)
-            logging.info("Database connection established.")
-        except Exception as e:
-            logging.error("An error occurred while connecting to the database", e)
+        name, user, password, host, port = self.window.connect_database()
+        if name and user and password and host and port:
+            try:
+                self.conn = psycopg2.connect(
+                    dbname=name,
+                    user=user,
+                    password=password,
+                    host=host,
+                    port=port
+                )
+                self.explainer = Explainer(self.conn)
+                self.connected = True
+                self.window.set_status(self.connected)
+                logging.info("Database connection established.")
+            except Exception as e:
+                self.connected = False
+                self.window.set_status(self.connected)
+                logging.error("An error occurred while connecting to the database", e)
+        else:
+            logging.error("Please fill all the fields.")
+        
+        # default
+        #    self.conn = psycopg2.connect(
+        #          dbname="TPC-H",
+        #          user="postgres",
+        #          password="password",
+        #          host="localhost",
+        #          port="5432"
 
     def close_connection(self):
         if self.conn:
+            self.connected = False
+            self.window.set_status(self.connected)            
             self.conn.close()
             logging.info("Database connection closed.")
 
