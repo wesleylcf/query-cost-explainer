@@ -35,7 +35,8 @@ class UI(QMainWindow):
         self.status_text = self.findChild(QLabel, "statusLabel")
         self.status_text.setText("Disconnected")
          
-        self.error_text = self.findChild(QLabel, "error")
+        self.error_text = self.findChild(QLabel, "errorlabel")
+        #self.error_text.setText("")
         self.error_text.setStyleSheet("color: red")
         self.error_text.setWordWrap(True)
         
@@ -64,6 +65,7 @@ class UI(QMainWindow):
     def clear(self):
         self.query_input.setPlainText("")
         self.cost_view.setText("")
+
     def readInput(self):
         return self.query_input.toPlainText()
     
