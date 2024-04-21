@@ -198,9 +198,6 @@ class CostEstimator:
 
 
     def nested_loop_cost_function(self, node):
-        """
-            Assume that they define child plans as a stack(last one executed first)
-        """
         materialize_node = scan_node = None
         current_rows = node['Plan Rows']
 
@@ -215,7 +212,7 @@ class CostEstimator:
         consecutive_materialize_access_cost = (scan_rows-1) * self.MATERIALIZED_CONSECUTIVE_ACCESS_COST
         if materialize_node:
             materialize_cost = materialize_node['Total Cost'] + consecutive_materialize_access_cost
-            materialize_cost_str = f"Materialize Cost: {materialize_node['Node Type']} + {round(consecutive_materialize_access_cost, 2)} = {round(materialize_cost, 2)}"
+            materialize_cost_str = f"Materialize Cost: Materialization Cost + Consecutive Materialize Access Cost({round(consecutive_materialize_access_cost, 2)}) = {round(materialize_cost, 2)}"
         else:
             materialize_cost = 0
             materialize_cost_str = "No Materialize Node"
@@ -232,21 +229,24 @@ class CostEstimator:
         
         explanation_array = [
         f"Explanation for {node['Node Type']}",
-        f"Consecutive Materialize Access Cost: {round(scan_rows-1, 2)} * {round(self.MATERIALIZED_CONSECUTIVE_ACCESS_COST, 2)} = {round(consecutive_materialize_access_cost, 2)}",
+        f"Consecutive Materialize Access Cost = (Scanned rows - 1)({scan_rows-1}) * Con({round(self.MATERIALIZED_CONSECUTIVE_ACCESS_COST, 2)}) = {round(consecutive_materialize_access_cost, 2)}",
         materialize_cost_str,
-        f"Scan Cost: {round(scan_cost, 2)}",
-        f"Output Rows Cost: {round(current_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows_cost, 2)}",
-        f"Total Cost: {round(materialize_cost, 2)} + {round(scan_cost, 2)} + {round(output_rows_cost, 2)} = {round(total_cost, 2)}"
+        f"Scan Cost = {round(scan_cost, 2)}",
+        f"Output Rows Cost = {round(current_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows_cost, 2)}",
+        f"Total Cost: Materialize Cost({round(materialize_cost, 2)}) + Scan Cost({round(scan_cost, 2)}) + Output Rows Cost({output_rows_cost}) = {round(total_cost, 2)}"
         ]
 
         
-        return [output_rows_cost, explanation_array]
+        return [output_rows_cost, '\n'.join(explanation_array)]
 
     def materialize_cost_function(self, node):
         rows = node['Plan Rows']
         cpu_operator_cost = self.properties['cpu_operator_cost']
-        total_cost = 2 * cpu_operator_cost * rows
-        return [total_cost, f"Materialize cost = 2 * cpu_operator_cost({cpu_operator_cost}) * tuples({rows}) = {total_cost}"]
+        children_cost = self.getChildrenCost(node)
+        cost = 2 * cpu_operator_cost * rows
+        explanation_array = [f"Materialize Cost = 2 * cpu_operator_cost({cpu_operator_cost}) * tuples({rows}) = {cost}"]
+        explanation_array.append(f"Total Cost = Cost of children({children_cost}) + Materialize Cost({cost}) = {round(cost + children_cost, 2)}")
+        return [cost, '\n'.join(explanation_array)]
 
     def scan_cost_function(self, node):
         rows, table_props = node['Plan Rows'], self.properties[node['Relation Name']]
@@ -548,3 +548,10 @@ class CostEstimator:
         explanation.append("Gather Merge cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
 
         return [total_cost, explanation]
+
+    def getChildrenCost(self, node):
+        if 'Plans' not in node:
+            return 0
+
+        return sum([child['Total Cost'] for child in node['Plans']])
+        
