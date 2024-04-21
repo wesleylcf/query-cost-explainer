@@ -81,13 +81,19 @@ class Explainer:
         Returns:
         list: A list of dictionaries representing the JSON formatted execution plan returned by PostgreSQL.
         """
-        with self.conn.cursor() as cur:
-            # cur.execute(f"EXPLAIN (ANALYZE true, BUFFERS true, FORMAT json) {query}")
-            cur.execute(f"EXPLAIN (ANALYZE true, FORMAT json) {query}")
-            explain_output = cur.fetchone()[0]
-            logging.info("EXPLAIN command executed successfully.")
-            # psycopg2 implicitly converts the JSON output to a list of dictionaries (python)
-            return explain_output
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(f"EXPLAIN (ANALYZE true, FORMAT json) {query}")
+                explain_output = cur.fetchone()[0]
+                logging.info("EXPLAIN command executed successfully.")
+                # psycopg2 implicitly converts the JSON output to a list of dictionaries (python)
+                return explain_output
+        except Exception as e:
+            logging.error("An error occurred while executing the EXPLAIN command", e)
+            # Rollback any ongoing transactions
+            self.conn.rollback()
+            # Handle the error gracefully, you may choose to return None or raise a custom exception
+            raise MyCustomException("An error occurred while executing the EXPLAIN command. Please check your input.")
 
     def analyze_node(self, node):
         """
