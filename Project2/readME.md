@@ -20,11 +20,11 @@ This script is responsible for running the EXPLAIN command on SQL queries, analy
     ```bash
     pip install psycopg2 PyQt5
     ```
-4. Navigate to the project directory:
+3. Navigate to the project directory:
     ```bash
     cd Project2/
     ```
-5. Run the application:
+4. Run the application:
     ```bash
     python project.py
     ```
@@ -35,7 +35,7 @@ This script is responsible for running the EXPLAIN command on SQL queries, analy
 3. Click the **Connect** button to establish a connection to the database.
 4. Enter an SQL query in the text area.
 5. Click the **Estimate** button to analyze the query and view the execution plan.
-6. The execution query plan will be visulized in a tree view on the right side of the window.
+6. The execution query plan will be visulized in a tree view on the right side of the window. Expand the tree to view the child nodes.
 7. Click the operators to view detailed information including actual costs, cost estimates and calculations
 
 ## Screenshots
