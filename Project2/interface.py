@@ -7,10 +7,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class UI(QMainWindow):
     def __init__(self):
         super(UI, self).__init__()
-        uic.loadUi("form.ui", self)
+        uic.loadUi("login.ui", self)
         self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
         self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
-        # link to UI widgets
+
         self.state = { 'qep': None, 'tree': {} }
 
         self.input_sql = self.findChild(QTextEdit, "inputText")
@@ -23,22 +23,6 @@ class UI(QMainWindow):
         
         self.btn_clear.clicked.connect(self.clear)
         self.tree_view.clicked.connect(self.on_tree_item_clicked)  # Connect the clicked signal to the method
-
-
-        # self.centralWidget().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        # self.input_sql.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        # self.label_qep.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        # self.btn_analyse.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        # self.btn_clear.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        # self.tree_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # self.scroll_area = QScrollArea()
-        # self.scroll_area.setWidgetResizable(True)
-        # self.scroll_content = QWidget()
-        # self.scroll_layout = QVBoxLayout(self.scroll_content)
-        # self.scroll_layout.addWidget(self.label_qep)
-        # self.scroll_area.setWidget(self.scroll_content)
-        # self.setCentralWidget(self.scroll_area)
         
     def showError(self, errMessage, execption=None):
         dialog = QMessageBox()
@@ -68,13 +52,11 @@ class UI(QMainWindow):
     def setOnDatabaseChanged(self, callback):
         self.cb_db_changed = callback
 
-    # private events handling 
     def _onDatabaseChanged(self, cur_index):
         if hasattr(self, "cb_db_changed"):
             self.cb_db_changed()
         
     def _onSchemaItemDoubleClicked(self, item, col):
-        # append item text to input text area
         self.setInput( f"{self.readInput()} {item.text(col)} ") 
 
     def on_tree_item_clicked(self, index):
