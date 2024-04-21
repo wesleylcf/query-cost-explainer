@@ -1,4 +1,5 @@
 from PyQt5 import uic
+from PyQt5.QtCore import QTime
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 import logging
@@ -8,46 +9,64 @@ class UI(QMainWindow):
     def __init__(self):
         super(UI, self).__init__()
         uic.loadUi("login.ui", self)
-        self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
-        self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
+        # self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
+        # self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
 
         self.state = { 'qep': None, 'tree': {} }
 
-        self.input_sql = self.findChild(QTextEdit, "inputText")
-        self.label_qep = self.findChild(QTextBrowser, "textBrowser")
-        self.btn_analyse = self.findChild(QPushButton, "estimateBtn")
-        self.btn_clear = self.findChild(QPushButton, "clearBtn")
-        # self.tree_view = self.findChild(QGraphicsView, "treeView")
-        self.tree_view = self.findChild(QTreeView, "treeView")  # Changed from QGraphicsView to QTreeView
+        # Widgets 
+        self.query_input = self.findChild(QTextEdit, "inputText")
+        self.cost_view = self.findChild(QTextBrowser, "costView")
+        self.estimate_btn = self.findChild(QPushButton, "estimateBtn")
+        self.clear_btn = self.findChild(QPushButton, "clearBtn")
+        self.tree_view = self.findChild(QTreeView, "treeView")
 
-        
-        self.btn_clear.clicked.connect(self.clear)
-        self.tree_view.clicked.connect(self.on_tree_item_clicked)  # Connect the clicked signal to the method
-        
-    def showError(self, errMessage, execption=None):
-        dialog = QMessageBox()
-        dialog.setStyleSheet("QLabel{min-width: 300px;}");
-        dialog.setWindowTitle("Error")
-        dialog.setText(errMessage)
-        if execption is not None:
-            dialog.setDetailedText(str(execption))
-        dialog.setStandardButtons(QMessageBox.Ok)
-        dialog.exec_()
+        # Login 
+        self.connect_btn = self.findChild(QPushButton, "connectBtn")
+        self.disconnect_btn = self.findChild(QPushButton, "disconnectBtn")
+        self.name_input = self.findChild(QLineEdit, "nameInput")
+        self.user_input = self.findChild(QLineEdit, "userInput")
+        self.pw_input = self.findChild(QLineEdit, "pwInput")
+        self.host_input = self.findChild(QLineEdit, "hostInput")
+        self.port_input = self.findChild(QLineEdit, "portInput")
+        self.status_box = self.findChild(QGroupBox, "statusBox")
+        self.status_text = self.findChild(QLabel, "statusLabel")
+        self.status_text.setText("Disconnected")
+
+        # Button Actions
+        self.connect_btn.clicked.connect(self.connect_database)
+        self.clear_btn.clicked.connect(self.clear)
+        self.tree_view.clicked.connect(self.on_tree_item_clicked)
+
+    def connect_database(self):
+        name = self.name_input.text()
+        user = self.user_input.text()
+        password = self.pw_input.text()
+        host = self.host_input.text()
+        port = self.port_input.text()
+        return name, user, password, host, port
+
+    def set_status(self, connected):
+        current_time = QTime.currentTime().toString()
+        if (connected):
+            self.status_text.setText(f"Connected Successfully @ {current_time}")
+        else:
+            self.status_text.setText("Disconnected")
 
     def clear(self):
-        self.input_sql.setPlainText("")
-        self.label_qep.setText("")
+        self.query_input.setPlainText("")
+        self.cost_view.setText("")
         
     def readInput(self):
-        return self.input_sql.toPlainText()
+        return self.query_input.toPlainText()
     
     def setInput(self, text):
-        self.input_sql.setPlainText(text)
+        self.query_input.setPlainText(text)
     
     # callback setter
     def setOnAnalyseClicked(self, callback):
         if callback:
-            self.btn_analyse.clicked.connect(callback)
+            self.estimate_btn.clicked.connect(callback)
         
     def setOnDatabaseChanged(self, callback):
         self.cb_db_changed = callback
@@ -64,7 +83,7 @@ class UI(QMainWindow):
         item = model.itemFromIndex(index)
         if item is not None:
             node = item.data()
-            self.label_qep.setText(self.node_to_string(node))
+            self.cost_view.setText(self.node_to_string(node))
     
     def node_to_string(self, node):
             node_type = node['Node Type']
