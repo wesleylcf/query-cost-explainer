@@ -451,8 +451,7 @@ class CostEstimator:
         explanation.append("Formula: Total Cost = (Rows Processed * CPU Operator Cost) + (Estimated Rows Returned * CPU Tuple Cost) + Child Cost")
         explanation.append(f"Aggregate Cost = (Rows Processed({round(rows_processed, 2)}) * CPU Operator Cost({round(cpu_operator_cost, 2)})) + (Estimated Rows Returned({round(estimated_rows_returned, 2)}) * CPU Tuple Cost({round(cpu_tuple_cost, 2)})) = {round(total_cost, 2)}")
         explanation.append(f"Total Cost = Aggregate Cost({round(total_cost, 2)}) + Child Cost({round(child_cost, 2)}) = {round(total_cost_with_child, 2)}")
-        explanation.append("Note:")
-        explanation.append("The estimated cost may be lesser than the actual cost due to exclusion of additional costs incurred from operations like Group By.")
+        explanation.append("Note: The estimated cost may be lesser than the actual cost due to exclusion of additional costs incurred from operations like Group By.")
 
         return self.toResponse(total_cost, explanation)
 
@@ -512,12 +511,7 @@ class CostEstimator:
         explanation.append("Formula: Total Cost = Child Cost * Cost Reduction Factor")
         explanation.append(f"Cost Reduction Factor = Limit Rows({round(limit_rows, 2)}) / Child Rows({round(child_rows, 2)}) = {round(cost_reduction_factor, 2)}")
         explanation.append(f"Total Cost = Child Cost({round(child_cost, 2)}) * Cost Reduction Factor({round(cost_reduction_factor, 2)}) = {round(total_cost, 2)}")
-        explanation.append("Note:")
-        explanation.append("The Cost Reduction Factor accounts for the early termination of the operation due to the LIMIT clause.")
-        explanation.append("When dealing with non-scan children like Gather Merge node, the standard formula for Cost Reduction Factor might not be accurate.")
-        explanation.append("=> This is because the non-scan child node may perform complex operations like parallel merging.")
-        explanation.append("=> Hence, a minimum scale factor of 0.2 is applied to avoid overestimation in such cases.")
-        explanation.append("=> This formula is a simplified version and may not cover all edge cases accurately, however, it is accurate for scan type children nodes.")
+        explanation.append("Note:\nThe Cost Reduction Factor accounts for the early termination of the operation due to the LIMIT clause.\nWhen dealing with non-scan children like Gather Merge node, the standard formula for Cost Reduction Factor might not be accurate.\n=> This is because the non-scan child node may perform complex operations like parallel merging.\n=> Hence, a minimum scale factor of 0.2 is applied to avoid overestimation in such cases.\n=> This formula is a simplified version and may not cover all edge cases accurately, however, it is accurate for scan type children nodes.")
 
         return self.toResponse(total_cost, explanation)
 
