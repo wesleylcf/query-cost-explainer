@@ -427,35 +427,10 @@ class CostEstimator:
         explanation.append("Formula: Total cost = (rows_processed * cpu_operator_cost) + (estimated_rows_returned * cpu_tuple_cost)")
         explanation.append(f"Total Cost = (rows_processed({rows_processed}) * cpu_operator_cost({cpu_operator_cost})) + (estimated_rows_returned({estimated_rows_returned}) * cpu_tuple_cost({cpu_tuple_cost})) = {total_cost}")
         explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
-        # explanation.append("Note: The actual cost may vary due to parallel execution efficiencies and other runtime factors.")
+        explanation.append("Note:")
+        explanation.append("The actual cost may vary due to parallel execution efficiencies and other runtime factors not accounted for in this formula.")
 
         return [total_cost, explanation]
-
-    # def gather_cost_function(self, node):
-    #     # See documentation: https://www.postgresql.org/docs/current/how-parallel-query-works.html
-    #
-    #     base_gather_cost = 1000  # Fixed base cost
-    #     cost_per_worker = 0.1  # Fixed cost per worker observed empirically
-    #     number_of_workers = node.get('Workers Launched', 1)
-    #
-    #     child_node = node['Plans'][0]
-    #     child_cost = child_node['Total Cost']
-    #
-    #     # Adding a minor variable cost based on the number of workers
-    #     worker_cost = cost_per_worker * number_of_workers
-    #
-    #     total_cost = base_gather_cost + worker_cost
-    #     total_cost_with_child = total_cost + child_cost
-    #
-    #     explanation = []
-    #     explanation.append("Formula: Total cost = base_gather_cost + (cost_per_worker * number_of_workers)")
-    #     explanation.append(f"Total Cost = base_gather_cost({base_gather_cost}) + (cost_per_worker({cost_per_worker}) * number_of_workers({number_of_workers})) = {total_cost}")
-    #     explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
-    #     explanation.append("Note:")
-    #     explanation.append("The base gather cost represents the fixed overhead for parallel query setup and coordination.")
-    #     explanation.append("The cost per worker represents the additional cost for each worker process involved in the parallel execution based on empirical data.")
-    #
-    #     return [total_cost, explanation]
 
     def gather_cost_function(self, node):
         child_node = node['Plans'][0]
@@ -484,7 +459,8 @@ class CostEstimator:
         explanation.append(f"run_cost = child_total_cost({child_total_cost}) - child_startup_cost({child_startup_cost}) + (parallel_tuple_cost({parallel_tuple_cost}) * rows({node['Plan Rows']})) = {run_cost}")
         explanation.append(f"Total Cost = startup_cost({startup_cost}) + run_cost({run_cost}) = {total_cost}")
         explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_total_cost}) = {total_cost_with_child}")
-        explanation.append("Note: Gather cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
+        explanation.append("Note:")
+        explanation.append("Gather cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
 
         return [total_cost, explanation]
 
@@ -520,6 +496,7 @@ class CostEstimator:
         explanation.append("=> This is because the non-scan child node may perform complex operations like parallel merging.")
         explanation.append("=> Hence, a minimum scale factor of 0.2 is applied to avoid overestimation in such cases.")
         explanation.append("=> This formula is a simplified version and may not cover all edge cases accurately, however, it is accurate for scan type children nodes.")
+        explanation.append("In PostgreSQL, LIMIT does not have a dedicated cost function but adjusts the expected number of output rows, affecting cost indirectly.")
 
         return [total_cost, explanation]
 
@@ -567,6 +544,7 @@ class CostEstimator:
         explanation.append(f"run_cost = heap_maintenance_cost({heap_maintenance_cost}) + parallel_tuple_cost({parallel_tuple_cost}) * rows({node['Plan Rows']}) * 1.05 = {run_cost}")
         explanation.append(f"Total Cost = startup_cost({total_startup_cost}) + run_cost({run_cost}) = {total_cost}")
         explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
-        explanation.append("Note: Gather Merge cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
+        explanation.append("Note:")
+        explanation.append("Gather Merge cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
 
         return [total_cost, explanation]
