@@ -316,16 +316,16 @@ class CostEstimator:
             elif 'Relation Name' in child:
                 right_props = self.properties[child['Relation Name']]
         if left_props and right_props:
-            left_pages, right_pages = left_props['pages'], right_props['pages']
-            left_tups, right_tups = left_props['tuples'], right_props['tuples']
-            left_cost = (left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost'])
-            right_cost = (right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost'])
-            explanation_array.append(f"left_cost = (left_pages({round(left_pages,2)}) * seq_page_cost({round(self.properties['seq_page_cost'], 2)})) + (left_tups({round(left_tups,2)}) * cpu_tuple_cost({round(self.properties['cpu_tuple_cost'],2)})) = {round(left_cost,2)}")
-            explanation_array.append(f"right_cost = (right_pages({round(right_pages,2)}) * seq_page_cost({round(self.properties['seq_page_cost'],2)})) + (right_tups({round(right_tups,2)}) * cpu_tuple_cost({round(self.properties['cpu_tuple_cost'],2)})) = {round(right_cost,2)}")
-            sort_cost = (left_tups + right_tups) * math.log(left_tups + right_tups) * self.properties['cpu_operator_cost']
-            explanation_array.append(f"sort_cost = (left_tups({round(left_tups,2)}) + right_tups({round(right_tups,2)})) * log(left_tups({round(left_tups,2)}) + right_tups({round(right_tups,2)})) * cpu_operator_cost({round(self.properties['cpu_operator_cost'],2)}) = {round(sort_cost,2)}")
-            estimated_total_cost = left_cost + right_cost + sort_cost
-            explanation_array.append(f"Therefore total cost = left_cost({round(left_cost,2)}) + right_cost({round(right_cost,2)}) + sort_cost({round(sort_cost,2)}) = {round(estimated_total_cost,2)}")
+            left_pages, right_pages = round(left_props['pages'],2), round(right_props['pages'],2)
+            left_tups, right_tups = round(left_props['tuples'],2), round(right_props['tuples'],2)
+            left_cost = round((left_pages * self.properties['seq_page_cost']) + (left_tups * self.properties['cpu_tuple_cost']),2)
+            right_cost = round((right_pages * self.properties['seq_page_cost']) + (right_tups * self.properties['cpu_tuple_cost']),2)
+            explanation_array.append(f"left_cost = (left_pages({left_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (left_tups({left_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {left_cost}")
+            explanation_array.append(f"right_cost = (right_pages({right_pages}) * seq_page_cost({self.properties['seq_page_cost']})) + (right_tups({right_tups}) * cpu_tuple_cost({self.properties['cpu_tuple_cost']})) = {right_cost}")
+            sort_cost = round((left_tups + right_tups) * math.log(left_tups + right_tups) * self.properties['cpu_operator_cost'],2)
+            explanation_array.append(f"sort_cost = (left_tups({left_tups}) + right_tups({right_tups})) * log(left_tups({left_tups}) + right_tups({right_tups})) * cpu_operator_cost({self.properties['cpu_operator_cost']}) = {sort_cost}")
+            estimated_total_cost = round(left_cost + right_cost + sort_cost,2)
+            explanation_array.append(f"Therefore total cost = left_cost({left_cost}) + right_cost({right_cost}) + sort_cost({sort_cost}) = {estimated_total_cost}")
             explanation = '\n'.join(explanation_array)
             return [round(estimated_total_cost, 2), explanation]
         else:
@@ -394,7 +394,7 @@ class CostEstimator:
         child_cost = node['Total Cost']
         explanation_array.append(f"child_cost = {round(child_cost,2)}")
         estimated_total_cost = child_cost
-        explanation_array.append(f"Therefore total cost = child_cost({round(child_cost,2)}) = {round(estimated_total_cost,2)}")
+        explanation_array.append(f"Therefore total cost = child_cost({child_cost}) = {estimated_total_cost}")
         explanation = '\n'.join(explanation_array)
         return [round(estimated_total_cost, 2), explanation]
     
