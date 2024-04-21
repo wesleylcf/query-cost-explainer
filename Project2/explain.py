@@ -404,7 +404,7 @@ class CostEstimator:
         total_cost = round(sort_cost + node['Total Cost'], 2)
 
         explanation = f"Total Sort cost = sort_cost({round(sort_cost, 2)}) + child_cost({round(node['Total Cost'], 2)}) = {total_cost}"
-        # return [total_cost, explanation]\
+
         return self.toResponse(total_cost, explanation)
 
 
@@ -416,18 +416,17 @@ class CostEstimator:
         rows_processed = child_node['Plan Rows']
         child_cost = child_node['Total Cost']
 
-        estimated_rows_returned = 1  # Sum, Count etc. only return 1 row
+        estimated_rows_returned = node['Plan Rows']
         total_cost = (rows_processed * cpu_operator_cost) + (estimated_rows_returned * cpu_tuple_cost)
         total_cost_with_child = total_cost + child_cost
 
         explanation = []
-        explanation.append("Formula: Total cost = (rows_processed * cpu_operator_cost) + (estimated_rows_returned * cpu_tuple_cost)")
-        explanation.append(f"Total Cost = (rows_processed({rows_processed}) * cpu_operator_cost({cpu_operator_cost})) + (estimated_rows_returned({estimated_rows_returned}) * cpu_tuple_cost({cpu_tuple_cost})) = {total_cost}")
-        explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
+        explanation.append("Formula: Total Cost = (Rows Processed * CPU Operator Cost) + (Estimated Rows Returned * CPU Tuple Cost) + Child Cost")
+        explanation.append(f"Aggregate Cost = (Rows Processed({round(rows_processed, 2)}) * CPU Operator Cost({round(cpu_operator_cost, 2)})) + (Estimated Rows Returned({round(estimated_rows_returned, 2)}) * CPU Tuple Cost({round(cpu_tuple_cost, 2)})) = {round(total_cost, 2)}")
+        explanation.append(f"Total Cost = Aggregate Cost({round(total_cost, 2)}) + Child Cost({round(child_cost, 2)}) = {round(total_cost_with_child, 2)}")
         explanation.append("Note:")
-        explanation.append("The actual cost may vary due to parallel execution efficiencies and other runtime factors not accounted for in this formula.")
+        explanation.append("The estimated cost may be lesser than the actual cost due to exclusion of additional costs incurred from operations like Group By.")
 
-        # return [total_cost, explanation]
         return self.toResponse(total_cost, explanation)
 
     def gather_cost_function(self, node):
@@ -452,15 +451,12 @@ class CostEstimator:
         total_cost_with_child = total_cost + child_total_cost
 
         explanation = []
-        explanation.append("Formula: Total Cost = startup_cost + run_cost")
-        explanation.append(f"startup_cost = parallel_setup_cost = {startup_cost}")
-        explanation.append(f"run_cost = child_total_cost({child_total_cost}) - child_startup_cost({child_startup_cost}) + (parallel_tuple_cost({parallel_tuple_cost}) * rows({node['Plan Rows']})) = {run_cost}")
-        explanation.append(f"Total Cost = startup_cost({startup_cost}) + run_cost({run_cost}) = {total_cost}")
-        explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_total_cost}) = {total_cost_with_child}")
-        explanation.append("Note:")
-        explanation.append("Gather cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
+        explanation.append("Formula: Total Cost = StartUp Cost + Run Cost + Child Cost")
+        explanation.append(f"StartUp Cost = Parallel Setup Cost = {round(startup_cost, 2)}")
+        explanation.append(f"Run Cost = Child Total Cost({round(child_total_cost, 2)}) - Child StartUp Cost({round(child_startup_cost,2 )}) + (Parallel Tuple Cost({round(parallel_tuple_cost, 2)}) * Rows({round(node['Plan Rows'], 2)})) = {round(run_cost, 2)}")
+        explanation.append(f"Gather Cost = StartUp Cost({round(startup_cost, 2)}) + Run Cost({round(run_cost, 2)}) = {round(total_cost, 2)}")
+        explanation.append(f"Total Cost = Gather Cost({round(total_cost, 2)}) + Child Cost({round(child_total_cost, 2)}) = {round(total_cost_with_child, 2)}")
 
-        # return [total_cost, explanation]
         return self.toResponse(total_cost, explanation)
 
     def limit_cost_function(self, node):
@@ -486,18 +482,16 @@ class CostEstimator:
         total_cost = child_cost * cost_reduction_factor
 
         explanation = []
-        explanation.append("Formula: Total Cost = child_cost * cost_reduction_factor")
-        explanation.append(f"cost_reduction_factor = limit_rows({limit_rows}) / child_rows({child_rows}) = {cost_reduction_factor}")
-        explanation.append(f"Total Cost = child_cost({child_cost}) * cost_reduction_factor({cost_reduction_factor}) = {total_cost}")
+        explanation.append("Formula: Total Cost = Child Cost * Cost Reduction Factor")
+        explanation.append(f"Cost Reduction Factor = Limit Rows({round(limit_rows, 2)}) / Child Rows({round(child_rows, 2)}) = {round(cost_reduction_factor, 2)}")
+        explanation.append(f"Total Cost = Child Cost({round(child_cost, 2)}) * Cost Reduction Factor({round(cost_reduction_factor, 2)}) = {round(total_cost, 2)}")
         explanation.append("Note:")
-        explanation.append("The cost reduction factor accounts for the early termination of the operation due to the LIMIT clause.")
-        explanation.append("When dealing with non-scan children like Gather Merge node, the standard formula for cost_reduction_factor might not always make sense.")
+        explanation.append("The Cost Reduction Factor accounts for the early termination of the operation due to the LIMIT clause.")
+        explanation.append("When dealing with non-scan children like Gather Merge node, the standard formula for Cost Reduction Factor might not be accurate.")
         explanation.append("=> This is because the non-scan child node may perform complex operations like parallel merging.")
         explanation.append("=> Hence, a minimum scale factor of 0.2 is applied to avoid overestimation in such cases.")
         explanation.append("=> This formula is a simplified version and may not cover all edge cases accurately, however, it is accurate for scan type children nodes.")
-        explanation.append("In PostgreSQL, LIMIT does not have a dedicated cost function but adjusts the expected number of output rows, affecting cost indirectly.")
 
-        # return [total_cost, explanation]
         return self.toResponse(total_cost, explanation)
 
     def gather_merge_cost_function(self, node):
@@ -539,15 +533,12 @@ class CostEstimator:
         total_cost_with_child = total_cost + child_cost
 
         explanation = []
-        explanation.append("Formula: Total Cost = startup_cost + run_cost")
-        explanation.append(f"startup_cost = heap_creation_cost({heap_creation_cost}) + parallel_setup_cost({parallel_setup_cost}) = {total_startup_cost}")
-        explanation.append(f"run_cost = heap_maintenance_cost({heap_maintenance_cost}) + parallel_tuple_cost({parallel_tuple_cost}) * rows({node['Plan Rows']}) * 1.05 = {run_cost}")
-        explanation.append(f"Total Cost = startup_cost({total_startup_cost}) + run_cost({run_cost}) = {total_cost}")
-        explanation.append(f"Total Cost with child (estimated_cost) = Total Cost({total_cost}) + child_cost({child_cost}) = {total_cost_with_child}")
-        explanation.append("Note:")
-        explanation.append("Gather Merge cost includes the setup overhead for parallel query setup and coordination, plus the incremental cost based on the number of rows processed.")
+        explanation.append("Formula: Total Cost = StartUp Cost + Run Cost + Child Cost")
+        explanation.append(f"StartUp Cost = Heap Creation Cost({round(heap_creation_cost, 2)}) + Parallel SetUp Cost({round(parallel_setup_cost, 2)}) = {round(total_startup_cost, 2)}")
+        explanation.append(f"Run Cost = Heap Maintenance Cost({round(heap_maintenance_cost, 2)}) + Parallel Tuple Cost({round(parallel_tuple_cost, 2)}) * Rows({round(node['Plan Rows'], 2)}) * 1.05 = {round(run_cost, 2)}")
+        explanation.append(f"Gather Merge Cost = StartUp Cost({round(total_startup_cost, 2)}) + Run Cost({round(run_cost, 2)}) = {round(total_cost, 2)}")
+        explanation.append(f"Total Cost = Gather Merge Cost({round(total_cost, 2)}) + Child Cost({round(child_cost, 2)}) = {round(total_cost_with_child, 2)}")
 
-        # return [total_cost, explanation]
         return self.toResponse(total_cost, explanation)
 
     def getChildrenCost(self, node):
