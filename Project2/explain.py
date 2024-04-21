@@ -499,9 +499,9 @@ class CostEstimator:
         else:
             cost_reduction_factor = 1  # No reduction if limit is equal to potential rows
 
-        # Minimum scale factor to avoid overestimation (too complex to calculate)
+        # Minimum scale factor to avoid overestimation (too complex to calculate), for child nodes which are not Seq Scan or Index Scan
         min_scale_factor = 0.2
-        if(cost_reduction_factor != 1):
+        if(cost_reduction_factor != 1 and child_node['Node Type'] not in ['Seq Scan', 'Index Scan']):
             cost_reduction_factor = max(cost_reduction_factor, min_scale_factor)
 
         # Adjusted cost considers the early termination of the scan or operation
