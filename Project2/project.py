@@ -30,11 +30,12 @@ class Application:
                 explain_output = self.explainer.run_explain(query)
                 analysis_results = self.explainer.analyze_execution_plan(explain_output)
                 report = self.explainer.generate_report(analysis_results)
-                self.window.setResult(report)
+                # self.window.setResult(report)
+                self.window.setTreeData(analysis_results)
                 logging.info("Analysis Report:")
                 logging.info(report)
             except Exception as e:
-                logging.error(f"An error occurred while processing the query: {e}")
+                logging.error("An error occurred while processing the query", e)
 
     def connect(self):
         try:
@@ -48,7 +49,7 @@ class Application:
             self.explainer = Explainer(self.conn)
             logging.info("Database connection established.")
         except Exception as e:
-            logging.error(f"An error occurred while connecting to the database: {e}")
+            logging.error("An error occurred while connecting to the database", e)
 
     def close_connection(self):
         if self.conn:

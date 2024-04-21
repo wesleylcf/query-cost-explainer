@@ -1,20 +1,27 @@
 from PyQt5 import uic
 from PyQt5.QtWidgets import *
-import json
+from PyQt5.QtGui import QStandardItemModel, QStandardItem
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class UI(QMainWindow):
     def __init__(self):
         super(UI, self).__init__()
         uic.loadUi("form.ui", self)
         # link to UI widgets
+        self.state = { 'qep': None, 'tree': {} }
 
         self.input_sql = self.findChild(QTextEdit, "inputText")
         self.label_qep = self.findChild(QTextBrowser, "textBrowser")
         self.btn_analyse = self.findChild(QPushButton, "estimateBtn")
         self.btn_clear = self.findChild(QPushButton, "clearBtn")
-        self.tree_view = self.findChild(QGraphicsView, "treeView")
+        # self.tree_view = self.findChild(QGraphicsView, "treeView")
+        self.tree_view = self.findChild(QTreeView, "treeView")  # Changed from QGraphicsView to QTreeView
+
         
         self.btn_clear.clicked.connect(self.clear)
+        self.tree_view.clicked.connect(self.on_tree_item_clicked)  # Connect the clicked signal to the method
+
 
         # self.centralWidget().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         # self.input_sql.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -50,37 +57,6 @@ class UI(QMainWindow):
     
     def setInput(self, text):
         self.input_sql.setPlainText(text)
-
-    
-    
-    def setResult(self, text):
-        
-        def process_plan(plan):
-            node_type = plan['Node Type']
-            actual_cost = plan['Total Cost']
-            estimated_cost = plan['estimated_cost']
-            explanation = '\n'.join(plan.get('explanation', []))
-            return f"Node Type: {node_type}\nActual Cost: {actual_cost}\nEstimated Cost: {estimated_cost}\nExplanation: {explanation}"
-
-        def process_plans(plans):
-            result = []
-            for plan in plans:
-                result.append("\n" + process_plan(plan))
-                if 'Plans' in plan:
-                    result.append("\n" + process_plans(plan['Plans']))
-            return '\n'.join(result)
-    
-        data = json.loads(text)
-        node_type = data['Node Type']
-        actual_cost = data['Total Cost']
-        estimated_cost = data['estimated_cost']
-        explanation = '\n'.join(data.get('explanation', []))
-        plans = process_plans(data['Plans'])
-
-        result = f"Node Type: {node_type}\nActual Cost: {actual_cost}\nEstimated Cost: {estimated_cost}\nExplanation: {explanation}\n\nPlans:\n{plans}"
-        print(result)
-        print("HELLOOOOOOOOOO")
-        self.label_qep.setText(result)
     
     # callback setter
     def setOnAnalyseClicked(self, callback):
@@ -99,29 +75,29 @@ class UI(QMainWindow):
         # append item text to input text area
         self.setInput( f"{self.readInput()} {item.text(col)} ") 
 
-        
-
-
-'''
-# maybe this part move to main script
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    apply_stylesheet(app, theme="light_cyan_500.xml")
-    window = UI()
+    def on_tree_item_clicked(self, index):
+        model = self.tree_view.model()
+        item = model.itemFromIndex(index)
+        if item is not None:
+            node = item.data()
+            self.label_qep.setText(self.node_to_string(node))
     
-    # fake schema
-    schema = {
-        "tabel1":["item_1", "item_2", "item_3"],
-        "tabel2":["item_4", "item_5", "item_6"],
-        "tabel3":["item_7", "item_8", "item_9"],
-        "tabel4":["item_10", "item_11", "item_12"]
-    }
-    window.setSchema(schema)
-    
-    # assigning callback
-    window.setOnClicked(
-        lambda: window.setResult( window.readInput() )
-    )
-    window.show()
-    sys.exit(app.exec_())
-'''
+    def node_to_string(self, node):
+            node_type = node['Node Type']
+            actual_cost = node['Total Cost']
+            estimated_cost = node['estimated_cost']
+            explanation = node['explanation']
+            return f"Node Type: {node_type}\nActual Cost: {actual_cost}\nEstimated Cost: {estimated_cost}\nExplanation: {explanation}"
+
+    def setTreeData(self, root):
+        model = QStandardItemModel()
+        self.buildTree(model, "", root)
+        self.tree_view.setModel(model)
+
+    def buildTree(self, parent, parent_id, node):
+        node_item = QStandardItem(node["Node Type"])
+        parent.appendRow(node_item)
+        node_item.setData(node)
+        if 'Plans' in node:
+            for child in node["Plans"]:
+                self.buildTree(node_item, "", child)

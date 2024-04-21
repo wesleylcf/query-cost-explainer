@@ -97,7 +97,7 @@
      <string>Query Tree with Costs</string>
     </property>
    </widget>
-   <widget class="QGraphicsView" name="treeView">
+   <widget class="QTreeView" name="treeView">
     <property name="geometry">
      <rect>
       <x>290</x>
