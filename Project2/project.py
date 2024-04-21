@@ -14,11 +14,16 @@ class Application:
         self.window = UI()
         self.window.setOnDatabaseChanged(self.onDatabaseChanged)
         self.window.setOnAnalyseClicked(self.analyseQuery)
+        self.window.onQueryChange(self.resetError)
         self.conn = None
         self.explainer = None
         self.connected = False
         self.window.connect_btn.clicked.connect(self.connect)
         self.window.disconnect_btn.clicked.connect(self.close_connection)
+
+    
+    def resetError(self):
+        self.window.setError("")
 
     def onDatabaseChanged(self):
         # Placeholder for database change logic?
@@ -38,6 +43,7 @@ class Application:
                 logging.info(report)
             except Exception as e:
                 logging.error("An error occurred while processing the query", e)
+                self.window.setError(str(e))
 
     def connect(self):
         name, user, password, host, port = self.window.connect_database()

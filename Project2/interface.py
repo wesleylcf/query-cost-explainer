@@ -1,13 +1,15 @@
 from PyQt5 import uic
-from PyQt5.QtCore import QTime
+from PyQt5.QtCore import QTime, pyqtSignal
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class UI(QMainWindow):
+    error_text_signal = pyqtSignal(str)
     def __init__(self):
         super(UI, self).__init__()
+        
         uic.loadUi("login.ui", self)
         # self.gridLayout.setRowStretch(0, 1)  # First row takes 1/3 of the height
         # self.gridLayout.setRowStretch(1, 2)  # Second row takes 2/3 of the height
@@ -32,11 +34,17 @@ class UI(QMainWindow):
         self.status_box = self.findChild(QGroupBox, "statusBox")
         self.status_text = self.findChild(QLabel, "statusLabel")
         self.status_text.setText("Disconnected")
-
+         
+        self.error_text = self.findChild(QLabel, "error")
+        self.error_text.setStyleSheet("color: red")
+        self.error_text.setWordWrap(True)
+        
         # Button Actions
         self.connect_btn.clicked.connect(self.connect_database)
         self.clear_btn.clicked.connect(self.clear)
         self.tree_view.clicked.connect(self.on_tree_item_clicked)
+        self.error_text_signal.connect(self.error_text.setText)
+
 
     def connect_database(self):
         name = self.name_input.text()
@@ -56,15 +64,24 @@ class UI(QMainWindow):
     def clear(self):
         self.query_input.setPlainText("")
         self.cost_view.setText("")
-        
     def readInput(self):
         return self.query_input.toPlainText()
     
     def setInput(self, text):
         self.query_input.setPlainText(text)
+        self.input_sql.setPlainText(text)
+
+    def clear(self):
+        self.input_sql.setPlainText("")
+        self.label_qep.setText("")
+        self.setError("")
+
+    def onQueryChange(self, callback):
+        self.input_sql.textChanged.connect(callback)
     
     # callback setter
     def setOnAnalyseClicked(self, callback):
+        self.setError("")
         if callback:
             self.estimate_btn.clicked.connect(callback)
         
@@ -90,7 +107,7 @@ class UI(QMainWindow):
             actual_cost = node['Total Cost']
             estimated_cost = node['estimated_cost']
             explanation = node['explanation']
-            return f"Node Type: {node_type}\nActual Cost: {actual_cost}\nEstimated Cost: {estimated_cost}\nExplanation: {explanation}"
+            return f"Node Type: {node_type}\n\nActual Cost: {actual_cost}\n\nEstimated Cost: {estimated_cost}\n\nExplanation:\n{explanation}"
 
     def setTreeData(self, root):
         model = QStandardItemModel()
@@ -104,3 +121,6 @@ class UI(QMainWindow):
         if 'Plans' in node:
             for child in node["Plans"]:
                 self.buildTree(node_item, "", child)
+
+    def setError(self, string: str):
+        self.error_text_signal.emit(string)
