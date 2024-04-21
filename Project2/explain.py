@@ -238,6 +238,7 @@ class CostEstimator:
             f"Scan Cost = {round(scan_cost, 2)}",
             f"Output Rows Cost = {round(current_rows, 2)} * {round(self.properties['cpu_tuple_cost'], 2)} = {round(output_rows_cost, 2)}",
             f"Total Cost: Materialize Cost({round(materialize_cost, 2)}) + Scan Cost({round(scan_cost, 2)}) + Output Rows Cost({output_rows_cost}) = {round(total_cost, 2)}"
+            f"Note: The estimated cost will differ significantly because the cost of the initial materialize access is included in the plan, but data for further consecutive calls isn't included, and its not feasible to calculate it with just the statistics of the relations."
         ]
 
         return self.toResponse(output_rows_cost, explanation_array)
@@ -297,6 +298,7 @@ class CostEstimator:
         estimated_total_cost = estimated_index_cost + estimated_table_cost
         explanation_array.append(f"Therefore Total Cost = Index Access Cost({estimated_index_cost}) + Table Pages Fetch Cost({estimated_table_cost}) = {round(estimated_total_cost,2)}")
 
+        explanation_array.append(f"Note: The estimated cost will differ significantly because any changes still present in the heap that haven't been vacuumed increase the total plan cost")
         return self.toResponse(estimated_total_cost, explanation_array)
     
     def merge_join_function_cost_function(self, node):
